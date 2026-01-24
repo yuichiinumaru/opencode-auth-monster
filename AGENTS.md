@@ -24,3 +24,6 @@ This workspace contains multiple repositories in which our team is working in.
 | **Load Balancing** | Unified Model Hub | Routes generic model names to the best (Provider, Account) pair based on health and quota. |
 | **Security** | Keychain/Secret Service | Prefer OS-level secret storage over plain-text files when possible. |
 | **Sync** | GitHub Secrets | `opencode-monster sync` uploads accounts to `OPENCODE_MONSTER_ACCOUNTS` GH secret. |
+| **Discovery** | `TokenExtractor` | Unified mechanism for extracting local tokens from Cursor (Keychain) and Windsurf (SQLite). |
+| **Proxy** | `ProxyManager` | Global proxy support via `proxyFetch`, respecting `HTTP_PROXY` env and global config. |
+| **Fallback** | Model Chain | Ordered fallback list for models, configurable via `opencode-monster fallback`. |

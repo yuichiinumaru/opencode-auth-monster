@@ -80,7 +80,7 @@ opencode-monster setup
 Prevents "backoff explosion" by deduplicating concurrent 429 (Rate Limit) errors within a 2-second window. This ensures that a burst of requests doesn't unnecessarily tank your account health.
 
 ### 🧠 Thinking Warmup
-Automatically "wakes up" reasoning models (like Claude 3.5 Sonnet) when switching accounts by sending a lightweight background request. This reduces latency for the user's first interaction with a fresh account.
+Automatically "wakes up" reasoning models (like Claude 4.5 Opus) when switching accounts by sending a lightweight background request. This reduces latency for the user's first interaction with a fresh account.
 
 ### 🧼 Cross-Model Sanitizer
 Automatically strips conflicting headers and system prompt signatures when switching between different model providers (e.g., removing Gemini-specific instructions before sending to Claude).

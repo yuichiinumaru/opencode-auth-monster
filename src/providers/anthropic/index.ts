@@ -1,6 +1,7 @@
 import { AuthProvider, ManagedAccount, OAuthTokens } from '../../core/types';
 import { transformRequest, transformResponseText } from './transform';
 import { listenForCode } from '../../utils/oauth-server';
+import { proxyFetch } from '../../core/proxy';
 
 const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 
@@ -38,7 +39,7 @@ export class AnthropicProvider {
     }
 
     try {
-      const response = await fetch("https://console.anthropic.com/v1/oauth/token", {
+      const response = await proxyFetch("https://console.anthropic.com/v1/oauth/token", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -94,7 +95,7 @@ export class AnthropicProvider {
     
     console.log('Code received, exchanging for tokens...');
     
-    const response = await fetch("https://console.anthropic.com/v1/oauth/token", {
+    const response = await proxyFetch("https://console.anthropic.com/v1/oauth/token", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

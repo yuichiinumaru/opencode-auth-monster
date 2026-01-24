@@ -1,5 +1,6 @@
 import { AuthProvider, ManagedAccount, OAuthTokens } from '../../core/types';
 import { listenForCode, generatePKCE } from '../../utils/oauth-server';
+import { proxyFetch } from '../../core/proxy';
 
 const GEMINI_CLIENT_ID = process.env.GEMINI_CLIENT_ID || "";
 const GEMINI_CLIENT_SECRET = process.env.GEMINI_CLIENT_SECRET || "";
@@ -40,7 +41,7 @@ export class GeminiProvider {
       // Parse project ID from refresh token if it was stored that way (ref: shantur-opencode-gemini-auth)
       const [refreshToken, projectId = ""] = account.tokens.refreshToken.split('|');
 
-      const response = await fetch("https://oauth2.googleapis.com/token", {
+      const response = await proxyFetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -118,7 +119,7 @@ export class GeminiProvider {
     
     const { verifier, projectId: stateProjectId } = JSON.parse(Buffer.from(state, 'base64').toString());
 
-    const response = await fetch("https://oauth2.googleapis.com/token", {
+    const response = await proxyFetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -141,7 +142,7 @@ export class GeminiProvider {
     const json = await response.json() as any;
     
     // Get user info to get email
-    const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v1/userinfo?alt=json", {
+    const userInfoResponse = await proxyFetch("https://www.googleapis.com/oauth2/v1/userinfo?alt=json", {
       headers: {
         "Authorization": `Bearer ${json.access_token}`
       }

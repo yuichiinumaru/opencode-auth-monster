@@ -3,12 +3,31 @@ import { AuthProvider } from '../core/types';
 import { AnthropicProvider } from '../providers/anthropic';
 import { GeminiProvider } from '../providers/gemini';
 import { WindsurfProvider } from '../providers/windsurf';
+import { cursorProvider } from '../providers/cursor';
+import { autoDiscoverAccounts } from './extractor';
 
 // enquirer types are sometimes missing or incompatible with ESM/TS named imports
 const { MultiSelect, Confirm } = require('enquirer');
 
 export async function runOnboardingWizard(monster: AuthMonster) {
   console.log("\n=== OpenCode Auth Monster Onboarding ===\n");
+
+  const autoDetect = await new Confirm({
+    message: 'Would you like to auto-detect local accounts (Cursor, Windsurf)?',
+    initial: true
+  }).run();
+
+  if (autoDetect) {
+    const discovered = await autoDiscoverAccounts();
+    if (discovered.length > 0) {
+      for (const account of discovered) {
+        await monster.addAccount(account);
+        console.log(`[Auto-detect] Added local ${account.provider} account.`);
+      }
+    } else {
+      console.log("No local accounts detected.");
+    }
+  }
 
   const providersResponse = await new MultiSelect({
     name: 'providers',
@@ -66,9 +85,18 @@ export async function runOnboardingWizard(monster: AuthMonster) {
             });
           } else if (provider === AuthProvider.Windsurf) {
              const account = await WindsurfProvider.discoverAccount();
-             await monster.addAccount(account);
-             console.log(`Discovered local Windsurf account: ${account.email}`);
+              await monster.addAccount(account);
+              console.log(`Discovered local Windsurf account: ${account.email}`);
+          } else if (provider === AuthProvider.Cursor) {
+             const account = await cursorProvider.discover();
+             if (account) {
+               await monster.addAccount(account);
+               console.log(`Discovered local Cursor account.`);
+             } else {
+               console.log("Could not discover local Cursor account. Please ensure you are logged in to Cursor.");
+             }
           } else {
+
             console.log(`Interactive login not yet implemented for ${provider}. Please use 'add' command manually.`);
             break;
           }

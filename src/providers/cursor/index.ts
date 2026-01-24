@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { AuthProvider, ManagedAccount, OAuthTokens } from '../../core/types';
 import { generateChecksum } from './proto';
+import { TokenExtractor } from '../../utils/extractor';
+import { proxyFetch } from '../../core/proxy';
 
 const CURSOR_API_BASE_URL = "https://api2.cursor.sh";
 const REFRESH_ENDPOINT = "/auth/refresh";
@@ -32,7 +34,7 @@ export class CursorProvider {
    */
   async refreshTokens(refreshToken: string): Promise<OAuthTokens | null> {
     try {
-      const response = await fetch(`${CURSOR_API_BASE_URL}${REFRESH_ENDPOINT}`, {
+      const response = await proxyFetch(`${CURSOR_API_BASE_URL}${REFRESH_ENDPOINT}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -66,6 +68,29 @@ export class CursorProvider {
     }
 
     return null;
+  }
+
+  /**
+   * Automatically discover local Cursor accounts
+   */
+  async discover(): Promise<ManagedAccount | null> {
+    const data = TokenExtractor.extractCursorFromKeychain() || TokenExtractor.extractCursorFromSQLite();
+    if (!data) return null;
+
+    return {
+      id: `cursor-local-${Date.now()}`,
+      email: 'local@cursor',
+      provider: AuthProvider.Cursor,
+      tokens: {
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+      },
+      isHealthy: true,
+      metadata: {
+        discoveredAt: Date.now(),
+        method: data.refreshToken ? 'keychain' : 'sqlite'
+      }
+    };
   }
 }
 

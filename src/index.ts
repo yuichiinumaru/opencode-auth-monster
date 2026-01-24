@@ -9,6 +9,7 @@ import { StorageManager } from './core/storage';
 import { AccountRotator, RateLimitReason } from './core/rotation';
 import { UnifiedModelHub } from './core/hub';
 import { sanitizeCrossModelRequest } from './utils/sanitizer';
+import { proxyFetch } from './core/proxy';
 
 // Import Providers
 import { GeminiProvider } from './providers/gemini';
@@ -43,9 +44,14 @@ export class AuthMonster {
     if (modelOrProvider && typeof modelOrProvider === 'string' && 
         !Object.values(AuthProvider).includes(modelOrProvider as AuthProvider)) {
       
-      const hubChoice = this.hub.selectModelAccount(modelOrProvider, this.accounts);
-      if (hubChoice) {
-        return this.selectAccount(hubChoice.provider, [hubChoice.account], hubChoice.modelInProvider);
+      const modelChain = this.hub.resolveModelChain(modelOrProvider, this.config);
+      
+      for (const modelName of modelChain) {
+        const hubChoice = this.hub.selectModelAccount(modelName, this.accounts);
+        if (hubChoice) {
+          const details = this.selectAccount(hubChoice.provider, [hubChoice.account], hubChoice.modelInProvider);
+          if (details) return details;
+        }
       }
     }
 
@@ -93,21 +99,82 @@ export class AuthMonster {
   }
 
   /**
+   * Performs a request with transparent model fallback and retries.
+   * If a model in the chain fails with a quota error, it automatically 
+   * reports the error and moves to the next model in the chain.
+   */
+  async request(model: string, url: string, options: any): Promise<Response> {
+    const modelChain = this.hub.resolveModelChain(model, this.config);
+    let lastError: any = new Error(`No available accounts for model chain: ${modelChain.join(', ')}`);
+
+    for (const currentModel of modelChain) {
+      const auth = await this.getAuthDetails(currentModel);
+      if (!auth) continue;
+
+      try {
+        const headers = { ...options.headers, ...auth.headers };
+        let body = options.body;
+
+        // Transform body if it's an object (AI request)
+        if (body && typeof body === 'object' && !(body instanceof FormData) && !(body instanceof Blob)) {
+          body = JSON.stringify(this.transformRequest(auth.provider, body, auth.modelInProvider));
+        }
+
+        const response = await proxyFetch(url, {
+          ...options,
+          headers,
+          body
+        });
+
+        if (response.status === 429 || response.status === 403) {
+          const text = await response.clone().text().catch(() => '');
+          if (text.toLowerCase().includes('quota') || text.toLowerCase().includes('rate limit')) {
+            console.warn(`[AuthMonster] Quota exceeded for ${auth.account.email} (${auth.provider}). Falling back...`);
+            await this.reportRateLimit(auth.account.id, 60000, 'QUOTA_EXHAUSTED');
+            continue; // Try next in chain
+          }
+        }
+
+        if (!response.ok) {
+          const errorText = await response.clone().text().catch(() => 'Unknown error');
+          console.warn(`[AuthMonster] Request failed for ${auth.account.email} (${auth.provider}): ${response.status} ${errorText}`);
+          // For non-quota errors, we might still want to report failure but maybe not fallback?
+          // Actually, let's report failure and see if we should continue.
+          await this.reportFailure(auth.account.id);
+          // If it's a 5xx error, maybe we should try another model too.
+          if (response.status >= 500) continue;
+        } else {
+          await this.reportSuccess(auth.account.id);
+        }
+
+        return response;
+      } catch (error) {
+        console.error(`[AuthMonster] Error during request with ${auth.account.email}:`, error);
+        await this.reportFailure(auth.account.id);
+        lastError = error;
+        continue; // Try next in chain
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
    * Sends a lightweight request to 'wake up' reasoning models
    */
   async runThinkingWarmup(accountId: string) {
     const account = this.accounts.find(a => a.id === accountId);
     if (!account) return;
 
-    // Only warmup reasoning models (Anthropic Claude 3.5 Sonnet/Opus)
+    // Only warmup reasoning models (Anthropic Claude 4.5 Opus / Thinking)
     if (account.provider !== AuthProvider.Anthropic) return;
 
     // Throttle warmups to once every 5 minutes per account
     const lastWarmup = this.lastWarmupTime.get(accountId) ?? 0;
     if (Date.now() - lastWarmup < 5 * 60 * 1000) return;
 
-    const isReasoningModel = account.metadata?.model?.includes('sonnet-3-5') || 
-                            account.metadata?.model?.includes('opus') ||
+    const isReasoningModel = account.metadata?.model?.includes('opus') || 
+                            account.metadata?.model?.includes('thinking') ||
                             !account.metadata?.model; // Assume reasoning if model unknown for Anthropic
 
     if (!isReasoningModel) return;
@@ -119,17 +186,17 @@ export class AuthMonster {
         : "https://console.anthropic.com/api/v1/messages";
 
       const body: any = {
-        model: account.metadata?.model || "claude-3-5-sonnet-20241022",
+        model: account.metadata?.model || "claude-4.5-opus-thinking",
         max_tokens: 1,
         messages: [{ role: "user", content: "Hello" }]
       };
 
       // Enable thinking if supported
-      if (body.model.includes('sonnet-3-5')) {
+      if (body.model.includes('thinking') || body.model.includes('opus')) {
         body.thinking = { type: "enabled", budget_tokens: 1024 };
       }
 
-      await fetch(url, {
+      await proxyFetch(url, {
         method: "POST",
         headers,
         body: JSON.stringify(body),

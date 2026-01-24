@@ -14,6 +14,8 @@ async function test() {
       active: AuthProvider.Gemini,
       fallback: [],
       method: 'sticky',
+      modelPriorities: {},
+      fallbackDirection: 'down',
       providers: {}
     },
     storagePath: testStorage

@@ -1,4 +1,4 @@
-import { AuthProvider, ManagedAccount } from './types';
+import { AuthProvider, ManagedAccount, AuthMonsterConfig } from './types';
 import { AccountRotator } from './rotation';
 
 /**
@@ -29,26 +29,60 @@ export class UnifiedModelHub {
    * In a real-world scenario, this could be loaded from a config file.
    */
   private initializeDefaultMappings() {
-    // Gemini 2.0 Flash
-    this.addMapping('gemini-2.0-flash', [
-      { provider: AuthProvider.Gemini, modelInProvider: 'gemini-2.0-flash' },
-      { provider: AuthProvider.Windsurf, modelInProvider: 'gemini-2.0-flash' },
-      { provider: AuthProvider.Kiro, modelInProvider: 'gemini-2.0-flash' }
+    // Gemini 3 Flash & Pro
+    this.addMapping('gemini-3-flash-preview', [
+      { provider: AuthProvider.Gemini, modelInProvider: 'gemini-3-flash' },
+      { provider: AuthProvider.Windsurf, modelInProvider: 'gemini-3-flash' },
+      { provider: AuthProvider.Kiro, modelInProvider: 'gemini-3-flash' }
     ]);
 
-    // Claude 3.5 Sonnet
-    this.addMapping('claude-3.5-sonnet', [
-      { provider: AuthProvider.Anthropic, modelInProvider: 'claude-3-5-sonnet-20241022' },
-      { provider: AuthProvider.Windsurf, modelInProvider: 'claude-3.5-sonnet' },
-      { provider: AuthProvider.Cursor, modelInProvider: 'claude-3.5-sonnet' }
+    this.addMapping('gemini-3-pro-preview', [
+      { provider: AuthProvider.Gemini, modelInProvider: 'gemini-3-pro' },
+      { provider: AuthProvider.Windsurf, modelInProvider: 'gemini-3-pro' }
     ]);
 
-    // GPT-4o
-    this.addMapping('gpt-4o', [
-      { provider: AuthProvider.OpenAI, modelInProvider: 'gpt-4o' },
-      { provider: AuthProvider.Windsurf, modelInProvider: 'gpt-4o' },
-      { provider: AuthProvider.Copilot, modelInProvider: 'gpt-4o' }
+    // Claude 4.5 Opus (Thinking)
+    this.addMapping('claude-4.5-opus-thinking', [
+      { provider: AuthProvider.Anthropic, modelInProvider: 'claude-4.5-opus-thinking' },
+      { provider: AuthProvider.Windsurf, modelInProvider: 'claude-4.5-opus' },
+      { provider: AuthProvider.Cursor, modelInProvider: 'claude-4.5-opus' }
     ]);
+
+    // GPT-5.2 Codex
+    this.addMapping('gpt-5.2-codex', [
+      { provider: AuthProvider.OpenAI, modelInProvider: 'gpt-5.2-codex' },
+      { provider: AuthProvider.Windsurf, modelInProvider: 'gpt-5.2-codex' },
+      { provider: AuthProvider.Copilot, modelInProvider: 'gpt-5.2-codex' }
+    ]);
+  }
+
+  /**
+   * Resolves the chain of models to try for a request, based on fallback configuration.
+   * 
+   * @param requestedModel The initial model requested
+   * @param config The current AuthMonster configuration
+   * @returns Ordered array of models to attempt
+   */
+  public resolveModelChain(requestedModel: string, config: AuthMonsterConfig): string[] {
+    const modelName = requestedModel.toLowerCase();
+    const fallbacks = config.modelPriorities[modelName] || [];
+    
+    // The chain starts with the requested model
+    const chain = [modelName, ...fallbacks];
+    
+    // Handle directionality if requested (though usually fallbacks are already ordered)
+    // If 'up', we might want to prioritize smarter models in the fallbacks.
+    // However, the prompt says "ordered array of fallback models" in config, 
+    // so we'll respect that order mostly.
+    
+    if (config.fallbackDirection === 'up') {
+      // In a real implementation, we might have a 'smarts' score for each model.
+      // For now, we'll assume the user-provided order is what they want, 
+      // but let's just make sure we don't have duplicates.
+      return Array.from(new Set(chain));
+    }
+
+    return Array.from(new Set(chain));
   }
 
   /**
@@ -61,7 +95,7 @@ export class UnifiedModelHub {
   /**
    * Selects the best (Provider, Account) combination to serve a request for a model.
    * 
-   * @param modelName Generic model name (e.g., 'gemini-2.0-flash')
+   * @param modelName Generic model name (e.g., 'gemini-3-flash-preview')
    * @param allAccounts List of all managed accounts across all providers
    * @returns The selected provider, account, and provider-specific model name
    */

@@ -190,6 +190,56 @@ import { AuthProvider, ManagedAccount, OAuthTokens } from './core/types';
         await runOnboardingWizard(monster);
       });
  
+    program.command('proxy')
+      .description('Set or view persistent proxy URL')
+      .argument('[url]', 'Proxy URL (e.g., http://user:pass@host:port or socks5://host:port). Pass "none" to disable.')
+      .action(async (url) => {
+        const currentConfig = configManager.loadConfig();
+        if (!url) {
+          console.log(`Current proxy: ${currentConfig.proxy || 'None'}`);
+          return;
+        }
+
+        if (url.toLowerCase() === 'none') {
+          currentConfig.proxy = undefined;
+          configManager.saveConfig(currentConfig);
+          console.log('Proxy disabled.');
+        } else {
+          currentConfig.proxy = url;
+          configManager.saveConfig(currentConfig);
+          console.log(`Proxy set to: ${url}`);
+        }
+      });
+
+    program.command('fallback')
+      .description('Configure dynamic model fallbacks')
+      .argument('<model>', 'The primary model name')
+      .argument('[fallbacks...]', 'Ordered list of fallback models')
+      .option('--direction <up|down>', 'Fallback direction: up (smarter first) or down (cheaper first)', 'down')
+      .action(async (model, fallbacks, options) => {
+        const currentConfig = configManager.loadConfig();
+        
+        if (!currentConfig.modelPriorities) {
+          currentConfig.modelPriorities = {};
+        }
+
+        if (fallbacks && fallbacks.length > 0) {
+          currentConfig.modelPriorities[model.toLowerCase()] = fallbacks.map((m: string) => m.toLowerCase());
+          console.log(`Fallback chain for ${model}: ${fallbacks.join(' -> ')}`);
+        } else {
+          delete currentConfig.modelPriorities[model.toLowerCase()];
+          console.log(`Cleared fallbacks for ${model}`);
+        }
+
+        if (options.direction) {
+          currentConfig.fallbackDirection = options.direction;
+          console.log(`Fallback direction set to: ${options.direction}`);
+        }
+
+        configManager.saveConfig(currentConfig);
+        console.log('Configuration updated.');
+      });
+
     await program.parseAsync(process.argv);
 
 }

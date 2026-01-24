@@ -54,6 +54,13 @@ export const AuthMonsterConfigSchema = z.object({
   active: z.nativeEnum(AuthProvider).default(AuthProvider.Gemini),
   fallback: z.array(z.nativeEnum(AuthProvider)).default([]),
   method: z.enum(['sticky', 'round-robin', 'hybrid', 'quota-optimized']).default('sticky'),
+  proxy: z.string().optional(),
+  modelPriorities: z.record(z.string(), z.array(z.string())).default({
+    'gemini-3-pro-preview': ['claude-4.5-opus-thinking', 'gpt-5.2-codex'],
+    'claude-4.5-opus-thinking': ['gpt-5.2-codex', 'gemini-3-pro-preview'],
+    'gpt-5.2-codex': ['claude-4.5-opus-thinking', 'gemini-3-pro-preview']
+  }),
+  fallbackDirection: z.enum(['up', 'down']).default('down'),
   providers: z.record(z.string(), z.object({
     enabled: z.boolean().default(true),
     profile: z.string().optional(),

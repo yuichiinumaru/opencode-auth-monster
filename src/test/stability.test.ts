@@ -14,6 +14,8 @@ async function testStability() {
       active: AuthProvider.Anthropic,
       fallback: [],
       method: 'round-robin',
+      modelPriorities: {},
+      fallbackDirection: 'down',
       providers: {}
     },
     storagePath: testStorage

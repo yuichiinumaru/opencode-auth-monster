@@ -1,5 +1,6 @@
 import { AuthProvider, ManagedAccount } from '../../core/types';
 import { getCredentials, WindsurfCredentials } from './auth';
+import { TokenExtractor } from '../../utils/extractor';
 
 export class WindsurfProvider {
   static readonly provider = AuthProvider.Windsurf;
@@ -44,22 +45,54 @@ export class WindsurfProvider {
     }
   }
   
+  /**
+   * Automatically discover local Windsurf accounts
+   */
+  static async discover(): Promise<ManagedAccount | null> {
+      try {
+          const credentials = getCredentials();
+          return {
+              id: `windsurf-local-${Date.now()}`,
+              email: 'local@windsurf',
+              provider: AuthProvider.Windsurf,
+              tokens: { accessToken: credentials.apiKey },
+              apiKey: credentials.apiKey,
+              metadata: {
+                  csrfToken: credentials.csrfToken,
+                  port: credentials.port,
+                  version: credentials.version,
+                  discoveredAt: Date.now()
+              },
+              isHealthy: true
+          };
+      } catch (error) {
+          // If process not running, try direct SQLite extraction via TokenExtractor
+          const apiKey = TokenExtractor.extractWindsurfFromSQLite();
+          if (apiKey) {
+              return {
+                  id: `windsurf-local-${Date.now()}`,
+                  email: 'local@windsurf',
+                  provider: AuthProvider.Windsurf,
+                  tokens: { accessToken: apiKey },
+                  apiKey: apiKey,
+                  isHealthy: true,
+                  metadata: {
+                      discoveredAt: Date.now(),
+                      method: 'sqlite'
+                  }
+              };
+          }
+          return null;
+      }
+  }
+
   // Helper to initialize a new account from environment
   static async discoverAccount(): Promise<ManagedAccount> {
-      const credentials = getCredentials();
-      return {
-          id: `windsurf-local-${Date.now()}`,
-          email: 'local@windsurf',
-          provider: AuthProvider.Windsurf,
-          tokens: { accessToken: credentials.apiKey }, // Use API key as access token placeholder
-          apiKey: credentials.apiKey,
-          metadata: {
-              csrfToken: credentials.csrfToken,
-              port: credentials.port,
-              version: credentials.version
-          },
-          isHealthy: true
-      };
+      const account = await this.discover();
+      if (!account) {
+          throw new Error('Could not discover local Windsurf account');
+      }
+      return account;
   }
 }
 
