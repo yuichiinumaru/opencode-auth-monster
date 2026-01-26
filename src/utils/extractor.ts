@@ -1,164 +1,141 @@
-import { execSync } from 'node:child_process';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
+import { execSync } from 'child_process';
+import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 import { AuthProvider, ManagedAccount } from '../core/types';
 
-/**
- * Utility to extract tokens from local application storage
- */
+export interface ExtractedToken {
+  provider: AuthProvider;
+  token: string;
+  email?: string;
+}
+
 export class TokenExtractor {
+
   /**
-   * Extract Cursor tokens from macOS Keychain
+   * Auto-discover accounts from local environment (Cursor, Windsurf, Env Vars).
    */
-  static extractCursorFromKeychain(): { accessToken: string; refreshToken?: string } | null {
-    if (process.platform !== 'darwin') return null;
+  static async discoverAll(): Promise<ManagedAccount[]> {
+    const accounts: ManagedAccount[] = [];
 
+    // 1. Cursor (Keychain)
     try {
-      // Use security tool to find generic password
-      // -s: service name
-      // -w: display only the password
-      const accessToken = execSync('security find-generic-password -s "cursor-access-token" -w', {
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      }).trim();
-
-      let refreshToken: string | undefined;
-      try {
-        refreshToken = execSync('security find-generic-password -s "cursor-refresh-token" -w', {
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim();
-      } catch (e) {
-        // Refresh token might not be present if not logged in fully or different version
-      }
-
-      if (accessToken) {
-        return { accessToken, refreshToken };
+      const cursorToken = this.getCursorToken();
+      if (cursorToken) {
+        accounts.push({
+          id: 'cursor-local',
+          email: 'local-cursor@device',
+          provider: AuthProvider.Cursor,
+          tokens: { accessToken: cursorToken },
+          isHealthy: true,
+          healthScore: 100,
+          metadata: { source: 'keychain' }
+        });
       }
     } catch (e) {
-      // Failed to extract from keychain or not found
+      // Ignore missing cursor
     }
-    return null;
+
+    // 2. Windsurf (SQLite)
+    try {
+      const windsurfAuth = this.getWindsurfAuth();
+      if (windsurfAuth) {
+        accounts.push({
+          id: 'windsurf-local',
+          email: 'local-windsurf@device',
+          provider: AuthProvider.Windsurf,
+          tokens: { accessToken: windsurfAuth },
+          isHealthy: true,
+          healthScore: 100,
+          metadata: { source: 'sqlite' }
+        });
+      }
+    } catch (e) {
+      // Ignore missing windsurf
+    }
+
+    // 3. Qwen (File)
+    try {
+        const qwenToken = this.getQwenToken();
+        if (qwenToken) {
+            accounts.push({
+                id: 'qwen-local',
+                email: 'local-qwen@device',
+                provider: AuthProvider.Qwen,
+                tokens: { accessToken: qwenToken },
+                isHealthy: true,
+                healthScore: 100,
+                metadata: { source: 'file' }
+            });
+        }
+    } catch (e) {
+        // Ignore missing qwen
+    }
+
+    return accounts;
   }
 
   /**
-   * Extract tokens from a VS Code-like SQLite state database
+   * Extract Cursor token from macOS Keychain.
    */
-  static extractFromSQLite(statePath: string, key: string): string | null {
-    if (!fs.existsSync(statePath)) return null;
-
+  private static getCursorToken(): string | null {
+    if (process.platform !== 'darwin') return null;
     try {
-      // Direct SQL query on ItemTable
-      const query = `SELECT value FROM ItemTable WHERE key = '${key}';`;
-      const result = execSync(`sqlite3 "${statePath}" "${query}"`, {
+      return execSync('security find-generic-password -s "cursor-access-token" -w', {
         encoding: 'utf8',
-        timeout: 5000,
         stdio: ['pipe', 'pipe', 'pipe'],
       }).trim();
-
-      return result || null;
     } catch (e) {
       return null;
     }
   }
 
   /**
-   * Extract Cursor tokens from SQLite (Fallback for macOS or primary for Linux)
+   * Extract Windsurf auth status from SQLite DB.
    */
-  static extractCursorFromSQLite(): { accessToken: string; refreshToken?: string } | null {
-    const paths = {
-      darwin: path.join(os.homedir(), 'Library/Application Support/Cursor/User/globalStorage/state.vscdb'),
-      linux: path.join(os.homedir(), '.config/Cursor/User/globalStorage/state.vscdb'),
-      win32: path.join(os.homedir(), 'AppData/Roaming/Cursor/User/globalStorage/state.vscdb'),
-    };
-
-    const statePath = paths[process.platform as keyof typeof paths];
-    if (!statePath) return null;
-
-    const accessToken = this.extractFromSQLite(statePath, 'cursor::accessToken');
-    // Refresh token might not be in SQLite or under different key
+  private static getWindsurfAuth(): string | null {
+    const home = os.homedir();
+    // Common path on macOS/Linux
+    const dbPath = path.join(home, 'Library/Application Support/Windsurf/User/globalStorage/state.vscdb');
     
-    if (accessToken) {
-      return { accessToken };
+    if (!fs.existsSync(dbPath)) return null;
+
+    try {
+      // Query SQLite directly
+      const query = "SELECT value FROM ItemTable WHERE key = 'windsurfAuthStatus';";
+      const result = execSync(`sqlite3 "${dbPath}" "${query}"`, {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      }).trim();
+
+      if (!result) return null;
+
+      // Parse JSON result to get access token
+      const json = JSON.parse(result);
+      return json.accessToken || null;
+    } catch (e) {
+      return null;
     }
-    return null;
   }
 
   /**
-   * Extract Windsurf API key from SQLite database
+   * Extract Qwen token from local creds file.
    */
-  static extractWindsurfFromSQLite(): string | null {
-    const paths = {
-      darwin: path.join(os.homedir(), 'Library/Application Support/Windsurf/User/globalStorage/state.vscdb'),
-      linux: path.join(os.homedir(), '.config/Windsurf/User/globalStorage/state.vscdb'),
-      win32: path.join(os.homedir(), 'AppData/Roaming/Windsurf/User/globalStorage/state.vscdb'),
-    };
+  private static getQwenToken(): string | null {
+      const home = os.homedir();
+      const credsPath = path.join(home, '.qwen/oauth_creds.json');
 
-    const statePath = paths[process.platform as keyof typeof paths];
-    if (!statePath) return null;
+      if (!fs.existsSync(credsPath)) return null;
 
-    const result = this.extractFromSQLite(statePath, 'windsurfAuthStatus');
-    if (result) {
       try {
-        const parsed = JSON.parse(result);
-        return parsed.apiKey || null;
+          const data = fs.readFileSync(credsPath, 'utf8');
+          const json = JSON.parse(data);
+          return json.access_token || null;
       } catch (e) {
-        // Some versions might store it differently
-        return result;
+          return null;
       }
-    }
-    return null;
   }
 }
 
-/**
- * Unified discovery function that scans for all supported local accounts
- */
-export async function autoDiscoverAccounts(): Promise<ManagedAccount[]> {
-  const accounts: ManagedAccount[] = [];
-
-  // --- Discover Cursor ---
-  let cursorData = TokenExtractor.extractCursorFromKeychain();
-  if (!cursorData) {
-    cursorData = TokenExtractor.extractCursorFromSQLite();
-  }
-
-  if (cursorData) {
-    accounts.push({
-      id: `cursor-local`,
-      email: 'local@cursor',
-      provider: AuthProvider.Cursor,
-      tokens: {
-        accessToken: cursorData.accessToken,
-        refreshToken: cursorData.refreshToken,
-      },
-      isHealthy: true,
-      metadata: {
-        discoveredAt: Date.now(),
-        method: cursorData.refreshToken ? 'keychain' : 'sqlite'
-      }
-    });
-  }
-
-  // --- Discover Windsurf ---
-  const windsurfApiKey = TokenExtractor.extractWindsurfFromSQLite();
-  if (windsurfApiKey) {
-    accounts.push({
-      id: `windsurf-local`,
-      email: 'local@windsurf',
-      provider: AuthProvider.Windsurf,
-      tokens: {
-        accessToken: windsurfApiKey,
-      },
-      apiKey: windsurfApiKey,
-      isHealthy: true,
-      metadata: {
-        discoveredAt: Date.now(),
-        method: 'sqlite'
-      }
-    });
-  }
-
-  return accounts;
-}
+// Export for direct usage
+export const autoDiscoverAccounts = () => TokenExtractor.discoverAll();
