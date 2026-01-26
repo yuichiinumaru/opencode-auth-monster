@@ -80,6 +80,63 @@ export class UnifiedModelHub {
     this.addMapping('qwen3-coder-plus', [
         { provider: AuthProvider.Qwen, modelInProvider: 'qwen3-coder-plus' }
     ]);
+
+    // --- MARK VI: EXPANSION (Protocol: NET_CRAWLER) ---
+
+    // Anthropic: Claude 4.5 Haiku
+    this.addMapping('claude-haiku-4-5', [
+        { provider: AuthProvider.Anthropic, modelInProvider: 'claude-haiku-4-5-20251001' },
+        { provider: AuthProvider.Windsurf, modelInProvider: 'claude-haiku-4.5' }
+    ]);
+
+    // Gemini: 2.5 Family (The "Workhorse" Suite)
+    this.addMapping('gemini-2.5-pro', [
+        { provider: AuthProvider.Gemini, modelInProvider: 'gemini-2.5-pro' },
+        { provider: AuthProvider.Windsurf, modelInProvider: 'gemini-2.5-pro' }
+    ]);
+    this.addMapping('gemini-2.5-flash', [
+        { provider: AuthProvider.Gemini, modelInProvider: 'gemini-2.5-flash' },
+        { provider: AuthProvider.Windsurf, modelInProvider: 'gemini-2.5-flash' }
+    ]);
+    this.addMapping('gemini-2.5-flash-lite', [
+        { provider: AuthProvider.Gemini, modelInProvider: 'gemini-2.5-flash-lite' }
+    ]);
+    this.addMapping('gemini-2.5-flash-image', [
+        { provider: AuthProvider.Gemini, modelInProvider: 'gemini-2.5-flash-image' }
+    ]);
+
+    // OpenAI: GPT-5 Family
+    this.addMapping('gpt-5.2-pro', [
+        { provider: AuthProvider.OpenAI, modelInProvider: 'gpt-5.2-pro' },
+        { provider: AuthProvider.Copilot, modelInProvider: 'gpt-5.2-pro' }
+    ]);
+    this.addMapping('gpt-5-mini', [
+        { provider: AuthProvider.OpenAI, modelInProvider: 'gpt-5-mini' }
+    ]);
+    this.addMapping('gpt-5-nano', [
+        { provider: AuthProvider.OpenAI, modelInProvider: 'gpt-5-nano' }
+    ]);
+
+    // OpenAI: Deep Research (Reasoning)
+    this.addMapping('o3-deep-research', [
+        { provider: AuthProvider.OpenAI, modelInProvider: 'o3-deep-research' }
+    ]);
+    this.addMapping('o4-mini-deep-research', [
+        { provider: AuthProvider.OpenAI, modelInProvider: 'o4-mini-deep-research' }
+    ]);
+
+    // OpenAI: Sora (Video)
+    this.addMapping('sora-2', [
+        { provider: AuthProvider.OpenAI, modelInProvider: 'sora-2' }
+    ]);
+    this.addMapping('sora-2-pro', [
+        { provider: AuthProvider.OpenAI, modelInProvider: 'sora-2-pro' }
+    ]);
+
+    // DeepSeek: V3.2 Exp
+    this.addMapping('deepseek-v3.2-exp', [
+        { provider: AuthProvider.Qwen, modelInProvider: 'deepseek-v3.2-exp' } // Via Qwen Proxy
+    ]);
   }
 
   /**
