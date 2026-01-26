@@ -54,6 +54,32 @@ export class UnifiedModelHub {
       { provider: AuthProvider.Windsurf, modelInProvider: 'gpt-5.2-codex' },
       { provider: AuthProvider.Copilot, modelInProvider: 'gpt-5.2-codex' }
     ]);
+
+    // NEW HARVESTED MODELS (Mark III)
+
+    // Claude 3.7 Sonnet (Latest)
+    this.addMapping('claude-3-7-sonnet-20250219', [
+        { provider: AuthProvider.Anthropic, modelInProvider: 'claude-3-7-sonnet-20250219' },
+        { provider: AuthProvider.Windsurf, modelInProvider: 'claude-3-7-sonnet' },
+        { provider: AuthProvider.Cursor, modelInProvider: 'claude-3.7-sonnet' }
+    ]);
+
+    // Claude 4.5 Sonnet (Internal ID -> Provider ID)
+    this.addMapping('claude-sonnet-4-5', [
+        { provider: AuthProvider.Anthropic, modelInProvider: 'CLAUDE_SONNET_4_5_20250929_V1_0' },
+        { provider: AuthProvider.Cursor, modelInProvider: 'claude-4.5-sonnet' }
+    ]);
+
+    // DeepSeek R1 (Reasoning)
+    this.addMapping('deepseek-r1', [
+        { provider: AuthProvider.Qwen, modelInProvider: 'deepseek-r1' }, // Qwen provider often proxies DeepSeek
+        { provider: AuthProvider.Windsurf, modelInProvider: 'deepseek-reasoner' }
+    ]);
+
+    // Qwen 3 Coder Plus
+    this.addMapping('qwen3-coder-plus', [
+        { provider: AuthProvider.Qwen, modelInProvider: 'qwen3-coder-plus' }
+    ]);
   }
 
   /**
