@@ -6,6 +6,8 @@ const anthropic_1 = require("../providers/anthropic");
 const gemini_1 = require("../providers/gemini");
 const windsurf_1 = require("../providers/windsurf");
 const cursor_1 = require("../providers/cursor");
+const qwen_1 = require("../providers/qwen");
+const iflow_1 = require("../providers/iflow");
 const extractor_1 = require("./extractor");
 // enquirer types are sometimes missing or incompatible with ESM/TS named imports
 const { MultiSelect, Confirm } = require('enquirer');
@@ -37,6 +39,7 @@ async function runOnboardingWizard(monster) {
             { name: types_1.AuthProvider.Windsurf, message: 'Windsurf' },
             { name: types_1.AuthProvider.OpenAI, message: 'OpenAI' },
             { name: types_1.AuthProvider.Qwen, message: 'Qwen' },
+            { name: types_1.AuthProvider.IFlow, message: 'iFlow' },
         ]
     }).run();
     if (providersResponse.length === 0) {
@@ -94,6 +97,34 @@ async function runOnboardingWizard(monster) {
                         else {
                             console.log("Could not discover local Cursor account. Please ensure you are logged in to Cursor.");
                         }
+                    }
+                    else if (provider === types_1.AuthProvider.Qwen) {
+                        const tokens = await qwen_1.QwenProvider.login();
+                        await monster.addAccount({
+                            id: Math.random().toString(36).substring(2, 11),
+                            email: 'interactive@qwen.ai',
+                            provider: types_1.AuthProvider.Qwen,
+                            tokens,
+                            isHealthy: true,
+                            healthScore: 100
+                        });
+                    }
+                    else if (provider === types_1.AuthProvider.IFlow) {
+                        const result = await iflow_1.IFlowProvider.login();
+                        await monster.addAccount({
+                            id: Math.random().toString(36).substring(2, 11),
+                            email: result.email || 'interactive@iflow.cn',
+                            provider: types_1.AuthProvider.IFlow,
+                            tokens: {
+                                accessToken: result.accessToken,
+                                refreshToken: result.refreshToken,
+                                expiryDate: result.expiryDate,
+                                tokenType: result.tokenType
+                            },
+                            apiKey: result.apiKey,
+                            isHealthy: true,
+                            healthScore: 100
+                        });
                     }
                     else {
                         console.log(`Interactive login not yet implemented for ${provider}. Please use 'add' command manually.`);

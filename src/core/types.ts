@@ -7,6 +7,7 @@ export enum AuthProvider {
   Cursor = 'cursor',
   Kiro = 'kiro',
   Qwen = 'qwen',
+  IFlow = 'iflow',
   OpenAI = 'openai',
   Copilot = 'copilot'
 }

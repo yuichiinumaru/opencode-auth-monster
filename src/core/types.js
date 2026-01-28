@@ -10,6 +10,7 @@ var AuthProvider;
     AuthProvider["Cursor"] = "cursor";
     AuthProvider["Kiro"] = "kiro";
     AuthProvider["Qwen"] = "qwen";
+    AuthProvider["IFlow"] = "iflow";
     AuthProvider["OpenAI"] = "openai";
     AuthProvider["Copilot"] = "copilot";
 })(AuthProvider || (exports.AuthProvider = AuthProvider = {}));

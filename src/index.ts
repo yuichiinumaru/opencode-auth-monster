@@ -16,6 +16,8 @@ import { GeminiProvider } from './providers/gemini';
 import { AnthropicProvider, transformRequest as anthropicTransformRequest, transformResponseText as anthropicTransformResponse } from './providers/anthropic';
 import { cursorProvider } from './providers/cursor';
 import { WindsurfProvider } from './providers/windsurf';
+import { QwenProvider } from './providers/qwen';
+import { IFlowProvider } from './providers/iflow';
 
 export { RateLimitReason };
 
@@ -223,6 +225,10 @@ export class AuthMonster {
         return cursorProvider.getHeaders(account);
       case AuthProvider.Windsurf:
         return WindsurfProvider.getHeaders(account);
+      case AuthProvider.Qwen:
+        return QwenProvider.getHeaders(account);
+      case AuthProvider.IFlow:
+        return IFlowProvider.getHeaders(account);
       default:
         // Default header generation fallback
         const headers: Record<string, string> = {};

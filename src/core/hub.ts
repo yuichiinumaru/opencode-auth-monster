@@ -137,6 +137,22 @@ export class UnifiedModelHub {
     this.addMapping('deepseek-v3.2-exp', [
         { provider: AuthProvider.Qwen, modelInProvider: 'deepseek-v3.2-exp' } // Via Qwen Proxy
     ]);
+
+    // Qwen Models
+    this.addMapping('qwen-max', [
+        { provider: AuthProvider.Qwen, modelInProvider: 'qwen-max' }
+    ]);
+    this.addMapping('qwen-plus', [
+        { provider: AuthProvider.Qwen, modelInProvider: 'qwen-plus' }
+    ]);
+    this.addMapping('qwen-turbo', [
+        { provider: AuthProvider.Qwen, modelInProvider: 'qwen-turbo' }
+    ]);
+
+    // iFlow Models
+    this.addMapping('iflow-chat', [
+        { provider: AuthProvider.IFlow, modelInProvider: 'iflow-chat' }
+    ]);
   }
 
   /**

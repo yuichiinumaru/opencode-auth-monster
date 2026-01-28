@@ -75,6 +75,50 @@ export class TokenExtractor {
     return accounts;
   }
 
+  public static extractCursorFromKeychain(): string | null {
+    return this.getCursorToken();
+  }
+
+  public static extractCursorFromSQLite(): string | null {
+    const home = os.homedir();
+    let dbPath = '';
+
+    switch (process.platform) {
+        case 'darwin':
+            dbPath = path.join(home, 'Library/Application Support/Cursor/User/globalStorage/state.vscdb');
+            break;
+        case 'win32':
+            dbPath = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Cursor/User/globalStorage/state.vscdb');
+            break;
+        case 'linux':
+            dbPath = path.join(home, '.config/Cursor/User/globalStorage/state.vscdb');
+            break;
+        default:
+            return null;
+    }
+
+    if (!fs.existsSync(dbPath)) return null;
+
+    try {
+        const query = "SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken';";
+
+        const result = execSync(`sqlite3 "${dbPath}" "${query}"`, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+        }).trim();
+
+        if (!result) return null;
+
+        return result;
+    } catch (e) {
+        return null;
+    }
+  }
+
+  public static extractWindsurfFromSQLite(): string | null {
+    return this.getWindsurfAuth();
+  }
+
   /**
    * Extract Cursor token from macOS Keychain.
    */

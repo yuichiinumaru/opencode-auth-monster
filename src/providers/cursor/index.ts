@@ -77,18 +77,18 @@ export class CursorProvider {
     const data = TokenExtractor.extractCursorFromKeychain() || TokenExtractor.extractCursorFromSQLite();
     if (!data) return null;
 
+    // data is string (accessToken)
     return {
       id: `cursor-local-${Date.now()}`,
       email: 'local@cursor',
       provider: AuthProvider.Cursor,
       tokens: {
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
+        accessToken: data,
       },
       isHealthy: true,
       metadata: {
         discoveredAt: Date.now(),
-        method: data.refreshToken ? 'keychain' : 'sqlite'
+        method: 'local'
       }
     };
   }
