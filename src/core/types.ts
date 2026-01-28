@@ -9,7 +9,9 @@ export enum AuthProvider {
   IFlow = 'iflow',
   OpenAI = 'openai',
   Copilot = 'copilot',
-  Kiro = 'kiro'
+  Kiro = 'kiro',
+  Zhipu = 'zhipu',
+  Minimax = 'minimax'
 }
 
 export type AuthMethod = 'sticky' | 'round-robin' | 'hybrid' | 'quota-optimized';

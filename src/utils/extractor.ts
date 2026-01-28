@@ -2,6 +2,7 @@ import { execSync } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { AuthProvider, ManagedAccount } from '../core/types';
 
 export interface ExtractedToken {
@@ -90,6 +91,24 @@ export class TokenExtractor {
         // Ignore missing kiro
     }
 
+    // 5. Claude (Keychain)
+    try {
+        const claudeToken = this.extractClaudeFromKeychain();
+        if (claudeToken) {
+            accounts.push({
+                id: 'claude-local',
+                email: 'local-claude@device',
+                provider: AuthProvider.Anthropic,
+                tokens: { accessToken: claudeToken },
+                isHealthy: true,
+                healthScore: 100,
+                metadata: { source: 'keychain', model: 'claude-3-opus-20240229' }
+            });
+        }
+    } catch (e) {
+        // Ignore missing claude
+    }
+
     return accounts;
   }
 
@@ -133,6 +152,57 @@ export class TokenExtractor {
 
   public static extractCursorFromKeychain(): string | null {
     return this.getCursorToken();
+  }
+
+  public static extractClaudeFromKeychain(): string | null {
+    if (process.platform !== 'darwin') return null;
+
+    // Logic from CodMate:
+    // Service Name: "Claude Code-credentials-<hash>"
+    // Hash is first 8 chars of SHA256 of expanded path "~/.claude"
+
+    const home = os.homedir();
+    const configPath = path.join(home, '.claude');
+
+    // Hash path
+    const hash = crypto.createHash('sha256').update(configPath).digest('hex').substring(0, 8);
+    const serviceName = `Claude Code-credentials-${hash}`;
+
+    try {
+        // We use 'security find-generic-password' with service name
+        // The account name is usually the OS username, but 'security' can find by service alone if unique enough
+        // or we can iterate.
+
+        const result = execSync(`security find-generic-password -s "${serviceName}" -w`, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+        }).trim();
+
+        // Result is likely a JSON envelope
+        if (result) {
+            try {
+                // Sometimes it returns the raw password (token) if -w is used,
+                // but CodMate implies it stores a JSON "CredentialEnvelope".
+                // However, `security -w` returns the password item.
+                // If CodMate stores the JSON *as* the password, this works.
+                // If it stores it as attribute, we might need different flags.
+                // Assuming it stores the JSON string as the keychain item 'password' (data).
+
+                // Let's try to parse as JSON
+                const json = JSON.parse(result);
+                if (json.claudeAiOauth && json.claudeAiOauth.accessToken) {
+                    return json.claudeAiOauth.accessToken;
+                }
+            } catch (e) {
+                // If not JSON, maybe it's the token directly?
+                if (result.startsWith('sk-')) return result;
+            }
+        }
+    } catch (e) {
+        // Try fallback service name without hash or "Claude Code"
+    }
+
+    return null;
   }
 
   public static extractCursorFromSQLite(): string | null {

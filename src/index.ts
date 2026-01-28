@@ -19,6 +19,8 @@ import { WindsurfProvider } from './providers/windsurf';
 import { QwenProvider } from './providers/qwen';
 import { IFlowProvider } from './providers/iflow';
 import { KiroProvider } from './providers/kiro';
+import { ZhipuProvider } from './providers/zhipu';
+import { MinimaxProvider } from './providers/minimax';
 
 export { RateLimitReason };
 
@@ -232,6 +234,10 @@ export class AuthMonster {
         return IFlowProvider.getHeaders(account);
       case AuthProvider.Kiro:
         return KiroProvider.getHeaders(account);
+      case AuthProvider.Zhipu:
+        return ZhipuProvider.getHeaders(account);
+      case AuthProvider.Minimax:
+        return MinimaxProvider.getHeaders(account);
       default:
         // Default header generation fallback
         const headers: Record<string, string> = {};

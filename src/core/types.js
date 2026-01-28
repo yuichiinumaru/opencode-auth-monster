@@ -13,6 +13,8 @@ var AuthProvider;
     AuthProvider["OpenAI"] = "openai";
     AuthProvider["Copilot"] = "copilot";
     AuthProvider["Kiro"] = "kiro";
+    AuthProvider["Zhipu"] = "zhipu";
+    AuthProvider["Minimax"] = "minimax";
 })(AuthProvider || (exports.AuthProvider = AuthProvider = {}));
 exports.AuthMonsterConfigSchema = zod_1.z.object({
     active: zod_1.z.nativeEnum(AuthProvider).default(AuthProvider.Gemini),

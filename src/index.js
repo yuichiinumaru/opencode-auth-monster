@@ -16,6 +16,8 @@ const windsurf_1 = require("./providers/windsurf");
 const qwen_1 = require("./providers/qwen");
 const iflow_1 = require("./providers/iflow");
 const kiro_1 = require("./providers/kiro");
+const zhipu_1 = require("./providers/zhipu");
+const minimax_1 = require("./providers/minimax");
 class AuthMonster {
     constructor(context) {
         this.accounts = [];
@@ -197,6 +199,10 @@ class AuthMonster {
                 return iflow_1.IFlowProvider.getHeaders(account);
             case types_1.AuthProvider.Kiro:
                 return kiro_1.KiroProvider.getHeaders(account);
+            case types_1.AuthProvider.Zhipu:
+                return zhipu_1.ZhipuProvider.getHeaders(account);
+            case types_1.AuthProvider.Minimax:
+                return minimax_1.MinimaxProvider.getHeaders(account);
             default:
                 // Default header generation fallback
                 const headers = {};
