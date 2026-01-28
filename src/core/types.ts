@@ -61,6 +61,16 @@ export const AuthMonsterConfigSchema = z.object({
     'gpt-5.2-codex': ['claude-4.5-opus-thinking', 'gemini-3-pro-preview']
   }),
   fallbackDirection: z.enum(['up', 'down']).default('down'),
+  thinking: z.object({
+    enabled: z.boolean().default(true),
+    defaultBudget: z.number().default(1024),
+    defaultLevel: z.string().default('low')
+  }).optional(),
+  quota: z.object({
+    enabled: z.boolean().default(true),
+    cooldownMinutes: z.number().default(5),
+    preflightCheck: z.boolean().default(true)
+  }).optional(),
   providers: z.record(z.string(), z.object({
     enabled: z.boolean().default(true),
     profile: z.string().optional(),
