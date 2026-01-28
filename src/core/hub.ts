@@ -153,6 +153,14 @@ export class UnifiedModelHub {
     this.addMapping('iflow-chat', [
         { provider: AuthProvider.IFlow, modelInProvider: 'iflow-chat' }
     ]);
+
+    // Kiro (AWS) Models
+    this.addMapping('codewhisperer', [
+        { provider: AuthProvider.Kiro, modelInProvider: 'codewhisperer-analysis' }
+    ]);
+    this.addMapping('amazon-q-dev', [
+        { provider: AuthProvider.Kiro, modelInProvider: 'amazon-q-developer' }
+    ]);
   }
 
   /**

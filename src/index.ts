@@ -18,6 +18,7 @@ import { cursorProvider } from './providers/cursor';
 import { WindsurfProvider } from './providers/windsurf';
 import { QwenProvider } from './providers/qwen';
 import { IFlowProvider } from './providers/iflow';
+import { KiroProvider } from './providers/kiro';
 
 export { RateLimitReason };
 
@@ -229,6 +230,8 @@ export class AuthMonster {
         return QwenProvider.getHeaders(account);
       case AuthProvider.IFlow:
         return IFlowProvider.getHeaders(account);
+      case AuthProvider.Kiro:
+        return KiroProvider.getHeaders(account);
       default:
         // Default header generation fallback
         const headers: Record<string, string> = {};

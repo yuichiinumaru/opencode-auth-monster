@@ -99,7 +99,62 @@ class TokenExtractor {
         catch (e) {
             // Ignore missing qwen
         }
+        // 4. Kiro/AWS SSO (File)
+        try {
+            const kiroToken = await this.extractKiroFromSSOCache();
+            if (kiroToken) {
+                accounts.push({
+                    id: 'kiro-local',
+                    email: kiroToken.email || 'local-kiro@aws',
+                    provider: types_1.AuthProvider.Kiro,
+                    tokens: { accessToken: kiroToken.token },
+                    isHealthy: true,
+                    healthScore: 100,
+                    metadata: { source: 'aws-sso' }
+                });
+            }
+        }
+        catch (e) {
+            // Ignore missing kiro
+        }
         return accounts;
+    }
+    static async extractKiroFromSSOCache() {
+        const home = os.homedir();
+        const ssoCachePath = path.join(home, '.aws', 'sso', 'cache');
+        if (!fs.existsSync(ssoCachePath))
+            return null;
+        try {
+            const files = fs.readdirSync(ssoCachePath);
+            for (const file of files) {
+                if (!file.endsWith('.json'))
+                    continue;
+                try {
+                    const content = fs.readFileSync(path.join(ssoCachePath, file), 'utf8');
+                    const json = JSON.parse(content);
+                    // Look for standard AWS SSO token format
+                    if (json.accessToken && json.expiresAt) {
+                        // Check expiry
+                        const expiresAt = new Date(json.expiresAt).getTime();
+                        if (expiresAt > Date.now()) {
+                            // Found valid token
+                            return {
+                                provider: types_1.AuthProvider.Kiro,
+                                token: json.accessToken,
+                                email: json.email // Sometimes present?
+                            };
+                        }
+                    }
+                }
+                catch (e) {
+                    continue;
+                }
+            }
+        }
+        catch (e) {
+            return null;
+        }
+        return null;
     }
     static extractCursorFromKeychain() {
         return this.getCursorToken();

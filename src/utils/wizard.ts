@@ -6,6 +6,7 @@ import { WindsurfProvider } from '../providers/windsurf';
 import { cursorProvider } from '../providers/cursor';
 import { QwenProvider } from '../providers/qwen';
 import { IFlowProvider } from '../providers/iflow';
+import { KiroProvider } from '../providers/kiro';
 import { autoDiscoverAccounts } from './extractor';
 
 // enquirer types are sometimes missing or incompatible with ESM/TS named imports
@@ -42,6 +43,7 @@ export async function runOnboardingWizard(monster: AuthMonster) {
       { name: AuthProvider.OpenAI, message: 'OpenAI' },
       { name: AuthProvider.Qwen, message: 'Qwen' },
       { name: AuthProvider.IFlow, message: 'iFlow' },
+      { name: AuthProvider.Kiro, message: 'Kiro (AWS)' },
     ]
   }).run();
 
@@ -124,6 +126,14 @@ export async function runOnboardingWizard(monster: AuthMonster) {
               isHealthy: true,
               healthScore: 100
             });
+          } else if (provider === AuthProvider.Kiro) {
+            const account = await KiroProvider.discoverAccount();
+            if (account) {
+                await monster.addAccount(account);
+                console.log(`Discovered local Kiro/AWS account: ${account.email}`);
+            } else {
+                console.log("Could not discover local Kiro/AWS account in ~/.aws/sso/cache.");
+            }
           } else {
 
             console.log(`Interactive login not yet implemented for ${provider}. Please use 'add' command manually.`);

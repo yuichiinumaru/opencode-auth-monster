@@ -126,6 +126,13 @@ class UnifiedModelHub {
         this.addMapping('iflow-chat', [
             { provider: types_1.AuthProvider.IFlow, modelInProvider: 'iflow-chat' }
         ]);
+        // Kiro (AWS) Models
+        this.addMapping('codewhisperer', [
+            { provider: types_1.AuthProvider.Kiro, modelInProvider: 'codewhisperer-analysis' }
+        ]);
+        this.addMapping('amazon-q-dev', [
+            { provider: types_1.AuthProvider.Kiro, modelInProvider: 'amazon-q-developer' }
+        ]);
     }
     /**
      * Resolves the chain of models to try for a request, based on fallback configuration.

@@ -15,6 +15,7 @@ const cursor_1 = require("./providers/cursor");
 const windsurf_1 = require("./providers/windsurf");
 const qwen_1 = require("./providers/qwen");
 const iflow_1 = require("./providers/iflow");
+const kiro_1 = require("./providers/kiro");
 class AuthMonster {
     constructor(context) {
         this.accounts = [];
@@ -194,6 +195,8 @@ class AuthMonster {
                 return qwen_1.QwenProvider.getHeaders(account);
             case types_1.AuthProvider.IFlow:
                 return iflow_1.IFlowProvider.getHeaders(account);
+            case types_1.AuthProvider.Kiro:
+                return kiro_1.KiroProvider.getHeaders(account);
             default:
                 // Default header generation fallback
                 const headers = {};

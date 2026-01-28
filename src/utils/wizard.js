@@ -8,6 +8,7 @@ const windsurf_1 = require("../providers/windsurf");
 const cursor_1 = require("../providers/cursor");
 const qwen_1 = require("../providers/qwen");
 const iflow_1 = require("../providers/iflow");
+const kiro_1 = require("../providers/kiro");
 const extractor_1 = require("./extractor");
 // enquirer types are sometimes missing or incompatible with ESM/TS named imports
 const { MultiSelect, Confirm } = require('enquirer');
@@ -40,6 +41,7 @@ async function runOnboardingWizard(monster) {
             { name: types_1.AuthProvider.OpenAI, message: 'OpenAI' },
             { name: types_1.AuthProvider.Qwen, message: 'Qwen' },
             { name: types_1.AuthProvider.IFlow, message: 'iFlow' },
+            { name: types_1.AuthProvider.Kiro, message: 'Kiro (AWS)' },
         ]
     }).run();
     if (providersResponse.length === 0) {
@@ -125,6 +127,16 @@ async function runOnboardingWizard(monster) {
                             isHealthy: true,
                             healthScore: 100
                         });
+                    }
+                    else if (provider === types_1.AuthProvider.Kiro) {
+                        const account = await kiro_1.KiroProvider.discoverAccount();
+                        if (account) {
+                            await monster.addAccount(account);
+                            console.log(`Discovered local Kiro/AWS account: ${account.email}`);
+                        }
+                        else {
+                            console.log("Could not discover local Kiro/AWS account in ~/.aws/sso/cache.");
+                        }
                     }
                     else {
                         console.log(`Interactive login not yet implemented for ${provider}. Please use 'add' command manually.`);
