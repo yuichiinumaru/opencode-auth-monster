@@ -10,6 +10,8 @@ import { AccountRotator, RateLimitReason } from './core/rotation';
 import { UnifiedModelHub } from './core/hub';
 import { sanitizeCrossModelRequest } from './utils/sanitizer';
 import { proxyFetch } from './core/proxy';
+import { CostEstimator } from './core/cost-estimator';
+import { HistoryManager } from './core/history';
 
 // Import Providers
 import { GeminiProvider } from './providers/gemini';
@@ -30,6 +32,7 @@ export class AuthMonster {
   private config: AuthMonsterConfig;
   private rotator: AccountRotator;
   private hub: UnifiedModelHub;
+  private history: HistoryManager;
   private lastUsedAccountId: string | null = null;
   private lastWarmupTime: Map<string, number> = new Map();
 
@@ -38,6 +41,7 @@ export class AuthMonster {
     this.storage = new StorageManager(context.storagePath);
     this.rotator = new AccountRotator();
     this.hub = new UnifiedModelHub();
+    this.history = new HistoryManager(context.storagePath);
   }
 
   async init() {
@@ -113,23 +117,101 @@ export class AuthMonster {
     let lastError: any = new Error(`No available accounts for model chain: ${modelChain.join(', ')}`);
 
     for (const currentModel of modelChain) {
-      const auth = await this.getAuthDetails(currentModel);
+      let auth = await this.getAuthDetails(currentModel);
+
+      // --- Rate Limit Parking (Phase 3) ---
+      if (!auth) {
+        // If no usable accounts found, check if any are just rate-limited and wait
+        const accountsWithReset = this.accounts.filter(a => a.rateLimitResetTime && a.rateLimitResetTime > Date.now());
+        if (accountsWithReset.length > 0) {
+            const earliestReset = Math.min(...accountsWithReset.map(a => a.rateLimitResetTime!));
+            const waitTime = earliestReset - Date.now();
+
+            // Only park if the wait is reasonable (< 60s)
+            if (waitTime > 0 && waitTime < 60000) {
+                console.log(`[AuthMonster] All accounts busy. Parking request for ${Math.ceil(waitTime / 1000)}s...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime + 100)); // Wait + buffer
+                auth = await this.getAuthDetails(currentModel);
+            }
+        }
+      }
+
       if (!auth) continue;
+
+      const startTime = Date.now();
+      let requestBody = options.body;
 
       try {
         const headers = { ...options.headers, ...auth.headers };
-        let body = options.body;
 
         // Transform body if it's an object (AI request)
-        if (body && typeof body === 'object' && !(body instanceof FormData) && !(body instanceof Blob)) {
-          body = JSON.stringify(this.transformRequest(auth.provider, body, auth.modelInProvider));
+        if (requestBody && typeof requestBody === 'object' && !(requestBody instanceof FormData) && !(requestBody instanceof Blob)) {
+          requestBody = JSON.stringify(this.transformRequest(auth.provider, requestBody, auth.modelInProvider));
         }
 
         const response = await proxyFetch(url, {
           ...options,
           headers,
-          body
+          body: requestBody
         });
+
+        // --- Stats & History Collection (Phase 3) ---
+        const collectStats = async () => {
+             // console.log("[AuthMonster] Collecting stats...");
+             const durationMs = Date.now() - startTime;
+             const responseClone = response.clone();
+             let responseBody: any;
+             let inputTokens = 0;
+             let outputTokens = 0;
+
+             try {
+                 const text = await responseClone.text();
+                 try { responseBody = JSON.parse(text); } catch { responseBody = text; }
+             } catch {}
+
+             // Extract tokens
+             if (responseBody && typeof responseBody === 'object' && responseBody.usage) {
+                 inputTokens = responseBody.usage.prompt_tokens || responseBody.usage.input_tokens || 0;
+                 outputTokens = responseBody.usage.completion_tokens || responseBody.usage.output_tokens || 0;
+             }
+
+             // Estimate tokens if missing
+             if (inputTokens === 0 && typeof requestBody === 'string') inputTokens = CostEstimator.estimateTokens(requestBody);
+             if (outputTokens === 0) {
+                 if (typeof responseBody === 'string') outputTokens = CostEstimator.estimateTokens(responseBody);
+                 else if (responseBody?.choices?.[0]?.message?.content) outputTokens = CostEstimator.estimateTokens(responseBody.choices[0].message.content);
+             }
+
+             const cost = CostEstimator.calculateCost(auth!.modelInProvider || currentModel, inputTokens, outputTokens);
+
+             // Update Usage
+             if (!auth!.account.usage) auth!.account.usage = { totalInputTokens: 0, totalOutputTokens: 0, totalCost: 0 };
+             auth!.account.usage.totalInputTokens += inputTokens;
+             auth!.account.usage.totalOutputTokens += outputTokens;
+             auth!.account.usage.totalCost += cost;
+
+             // Log to History
+             let parsedRequest = requestBody;
+             if (typeof requestBody === 'string') {
+                 try { parsedRequest = JSON.parse(requestBody); } catch {}
+             }
+
+             await this.history.addEntry({
+                 model: currentModel,
+                 provider: auth!.provider,
+                 accountId: auth!.account.id,
+                 tokens: { input: inputTokens, output: outputTokens },
+                 cost,
+                 request: parsedRequest,
+                 response: responseBody,
+                 durationMs,
+                 success: response.ok,
+                 error: !response.ok ? `Status ${response.status}` : undefined
+             });
+        };
+
+        // Don't await stats collection to avoid blocking the response return (fire and forget)
+        collectStats().catch(err => console.error('[AuthMonster] Stats collection failed:', err));
 
         if (response.status === 429 || response.status === 403) {
           const text = await response.clone().text().catch(() => '');
@@ -143,10 +225,7 @@ export class AuthMonster {
         if (!response.ok) {
           const errorText = await response.clone().text().catch(() => 'Unknown error');
           console.warn(`[AuthMonster] Request failed for ${auth.account.email} (${auth.provider}): ${response.status} ${errorText}`);
-          // For non-quota errors, we might still want to report failure but maybe not fallback?
-          // Actually, let's report failure and see if we should continue.
           await this.reportFailure(auth.account.id);
-          // If it's a 5xx error, maybe we should try another model too.
           if (response.status >= 500) continue;
         } else {
           await this.reportSuccess(auth.account.id);
@@ -155,6 +234,19 @@ export class AuthMonster {
         return response;
       } catch (error) {
         console.error(`[AuthMonster] Error during request with ${auth.account.email}:`, error);
+
+        // Log failure to history
+        this.history.addEntry({
+            model: currentModel,
+            provider: auth.provider,
+            accountId: auth.account.id,
+            request: requestBody,
+            response: null,
+            durationMs: Date.now() - startTime,
+            success: false,
+            error: String(error)
+        }).catch(() => {});
+
         await this.reportFailure(auth.account.id);
         lastError = error;
         continue; // Try next in chain
