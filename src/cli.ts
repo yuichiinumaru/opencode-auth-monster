@@ -10,6 +10,8 @@ import { extractQuota, getCooldownStatus } from './core/quota-manager';
  import { GeminiProvider } from './providers/gemini';
  import { syncToGitHub } from './utils/github-sync';
  import { runOnboardingWizard } from './utils/wizard';
+ import { startDashboard } from './ui/dashboard';
+ import { startServer } from './server/index';
  
  async function main() {
 
@@ -282,6 +284,21 @@ import { extractQuota, getCooldownStatus } from './core/quota-manager';
 
         configManager.saveConfig(currentConfig);
         console.log('Configuration updated.');
+      });
+
+    program.command('dashboard')
+      .description('Launch the TUI Dashboard')
+      .action(async () => {
+        await monster.init();
+        startDashboard(monster);
+      });
+
+    program.command('server')
+      .description('Start the Web Admin Server')
+      .option('-p, --port <number>', 'Port to listen on', '3000')
+      .action(async (options) => {
+        await monster.init();
+        startServer(monster, parseInt(options.port));
       });
 
     await program.parseAsync(process.argv);
