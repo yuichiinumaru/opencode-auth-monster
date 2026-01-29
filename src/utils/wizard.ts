@@ -1,5 +1,6 @@
 import { AuthMonster } from '../index';
 import { AuthProvider } from '../core/types';
+import { ConfigManager } from '../core/config';
 import { AnthropicProvider } from '../providers/anthropic';
 import { GeminiProvider } from '../providers/gemini';
 import { WindsurfProvider } from '../providers/windsurf';
@@ -7,9 +8,10 @@ import { cursorProvider } from '../providers/cursor';
 import { autoDiscoverAccounts } from './extractor';
 
 // enquirer types are sometimes missing or incompatible with ESM/TS named imports
-const { MultiSelect, Confirm } = require('enquirer');
+const { MultiSelect, Confirm, Input } = require('enquirer');
 
 export async function runOnboardingWizard(monster: AuthMonster) {
+  const configManager = new ConfigManager();
   console.log("\n=== OpenCode Auth Monster Onboarding ===\n");
 
   const autoDetect = await new Confirm({
@@ -117,6 +119,44 @@ export async function runOnboardingWizard(monster: AuthMonster) {
   }
 
   await monster.init(); // Reload accounts to be sure
+
+  // --- Model Priority Configuration ---
+  const configureFallbacks = await new Confirm({
+    message: 'Would you like to configure model fallback priorities?',
+    initial: false
+  }).run();
+
+  if (configureFallbacks) {
+    let continueConfig = true;
+    while (continueConfig) {
+      const primaryModel = await new Input({
+        message: 'Enter primary model name (e.g., claude-3-7-sonnet):',
+        initial: 'claude-3-7-sonnet-20250219'
+      }).run();
+
+      const fallbackInput = await new Input({
+        message: 'Enter fallback models (comma-separated, e.g., claude-3-5-sonnet, gemini-2.5-pro):'
+      }).run();
+
+      const fallbacks = fallbackInput.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+
+      if (fallbacks.length > 0) {
+        const config = configManager.loadConfig();
+        if (!config.modelPriorities) config.modelPriorities = {};
+        config.modelPriorities[primaryModel.toLowerCase()] = fallbacks.map((f: string) => f.toLowerCase());
+        configManager.saveConfig(config);
+        console.log(`Fallback chain saved for ${primaryModel}.`);
+      } else {
+        console.log("No fallbacks provided. Skipping.");
+      }
+
+      continueConfig = await new Confirm({
+        message: 'Configure another model?',
+        initial: false
+      }).run();
+    }
+  }
+
   const accountsStatus = monster.getAllAccountsStatus();
   const healthyCount = accountsStatus.filter(a => a.isHealthy).length;
   const score = accountsStatus.length > 0 ? Math.round((healthyCount / accountsStatus.length) * 100) : 0;

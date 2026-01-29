@@ -1,4 +1,5 @@
 import { ManagedAccount, AuthMethod } from './types';
+import { isOnCooldown } from './quota-manager';
 
 // ============================================================================
 // CONSTANTS & TYPES
@@ -121,6 +122,9 @@ export class AccountRotator {
       if (acc.rateLimitResetTime && now < acc.rateLimitResetTime) return false;
       if (acc.cooldownUntil && now < acc.cooldownUntil) return false;
       
+      // Check global cooldown manager
+      if (isOnCooldown(acc.provider, acc.id)) return false;
+
       // Check health
       if (!this.healthTracker.isUsable(acc)) return false;
 
@@ -134,10 +138,22 @@ export class AccountRotator {
         return this.selectRoundRobin(availableAccounts);
       case 'hybrid':
         return this.selectHybrid(availableAccounts);
+      case 'quota-optimized':
+        return this.selectQuotaOptimized(availableAccounts);
       case 'sticky':
       default:
         return this.selectSticky(availableAccounts);
     }
+  }
+
+  private selectQuotaOptimized(accounts: ManagedAccount[]): ManagedAccount {
+    // Sort by remaining quota (descending)
+    const sorted = [...accounts].sort((a, b) => {
+      const quotaA = a.quota?.remaining ?? 1000;
+      const quotaB = b.quota?.remaining ?? 1000;
+      return quotaB - quotaA;
+    });
+    return sorted[0];
   }
 
   private selectRoundRobin(accounts: ManagedAccount[]): ManagedAccount {

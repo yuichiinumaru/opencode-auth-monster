@@ -1,5 +1,7 @@
 import { AuthProvider, ManagedAccount, AuthMonsterConfig } from './types';
 import { AccountRotator } from './rotation';
+import { validateThinking, ThinkingValidationResult } from './thinking-validator';
+import { isOnCooldown } from './quota-manager';
 
 /**
  * Entry in the Model Hub mapping a generic model name 
@@ -176,14 +178,51 @@ export class UnifiedModelHub {
   }
 
   /**
+   * Validates and normalizes request parameters, particularly thinking budget.
+   */
+  public validateRequest(
+    provider: AuthProvider,
+    modelId: string,
+    thinking?: string | number
+  ): { valid: boolean; value?: string | number; warning?: string } {
+      if (thinking === undefined) return { valid: true };
+      return validateThinking(provider, modelId, thinking);
+  }
+
+  /**
    * Selects the best (Provider, Account) combination to serve a request for a model.
+   * Uses fallback chain if primary model has no available accounts.
    * 
    * @param modelName Generic model name (e.g., 'gemini-3-flash-preview')
    * @param allAccounts List of all managed accounts across all providers
+   * @param config Optional config to resolve fallbacks
    * @returns The selected provider, account, and provider-specific model name
    */
   public selectModelAccount(
     modelName: string, 
+    allAccounts: ManagedAccount[],
+    config?: AuthMonsterConfig
+  ): { provider: AuthProvider, account: ManagedAccount, modelInProvider: string } | null {
+
+    let modelsToTry = [modelName];
+
+    // If config is provided, resolve the full fallback chain
+    if (config) {
+        modelsToTry = this.resolveModelChain(modelName, config);
+    }
+
+    for (const model of modelsToTry) {
+        const selection = this.attemptSelectModelAccount(model, allAccounts);
+        if (selection) {
+            return selection;
+        }
+    }
+
+    return null;
+  }
+
+  private attemptSelectModelAccount(
+    modelName: string,
     allAccounts: ManagedAccount[]
   ): { provider: AuthProvider, account: ManagedAccount, modelInProvider: string } | null {
     const hubEntries = this.modelMap.get(modelName.toLowerCase());
@@ -263,6 +302,7 @@ export class UnifiedModelHub {
     const now = Date.now();
     if (account.rateLimitResetTime && now < account.rateLimitResetTime) return false;
     if (account.cooldownUntil && now < account.cooldownUntil) return false;
+    if (isOnCooldown(account.provider, account.id)) return false;
     if (account.healthScore !== undefined && account.healthScore < 50) return false; // MIN_USABLE
     return account.isHealthy !== false;
   }

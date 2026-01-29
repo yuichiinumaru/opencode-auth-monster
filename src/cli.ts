@@ -4,6 +4,7 @@ import { createAuthMonster } from './index';
 import { ConfigManager } from './core/config';
 import { StorageManager } from './core/storage';
 import { AuthProvider, ManagedAccount, OAuthTokens } from './core/types';
+import { extractQuota, getCooldownStatus } from './core/quota-manager';
 
  import { AnthropicProvider } from './providers/anthropic';
  import { GeminiProvider } from './providers/gemini';
@@ -119,6 +120,7 @@ import { AuthProvider, ManagedAccount, OAuthTokens } from './core/types';
   program.command('status')
     .description('Show general system health and current active provider')
     .action(async () => {
+      console.log(`\n=== System Status ===`);
       console.log(`Active Provider: ${config.active}`);
       console.log(`Fallback Providers: ${config.fallback.join(', ') || 'None'}`);
       console.log(`Rotation Method: ${config.method}`);
@@ -127,6 +129,48 @@ import { AuthProvider, ManagedAccount, OAuthTokens } from './core/types';
       const healthyCount = accounts.filter(a => a.isHealthy).length;
       console.log(`Total Accounts: ${accounts.length}`);
       console.log(`Healthy Accounts: ${healthyCount}`);
+    });
+
+  program.command('quota')
+    .description('Show detailed quota usage for all accounts')
+    .action(async () => {
+      const accounts = await storageManager.loadAccounts();
+      if (accounts.length === 0) {
+        console.log('No accounts found.');
+        return;
+      }
+
+      console.log('\n=== Quota Usage ===\n');
+      const tableData = accounts.map(a => {
+        let quotaInfo = 'Unlimited';
+        let cooldown = 'Active';
+
+        const quota = extractQuota(a);
+        if (quota.remaining < 1000) {
+           quotaInfo = `${quota.remaining.toFixed(1)}%`;
+        }
+
+        const cooldownStatus = getCooldownStatus(a.provider, a.id);
+        if (cooldownStatus.active && cooldownStatus.until) {
+          const minLeft = Math.ceil((cooldownStatus.until - Date.now()) / 60000);
+          cooldown = `Cooldown (${minLeft}m)`;
+        } else if (a.cooldownUntil && a.cooldownUntil > Date.now()) {
+           const minLeft = Math.ceil((a.cooldownUntil - Date.now()) / 60000);
+           cooldown = `Cooldown (${minLeft}m)`;
+        } else if (!a.isHealthy) {
+          cooldown = 'Unhealthy';
+        }
+
+        return {
+          ID: a.id.substring(0, 8),
+          Provider: a.provider,
+          Email: a.email,
+          Quota: quotaInfo,
+          Status: cooldown
+        };
+      });
+
+      console.table(tableData);
     });
 
   program.command('switch')
