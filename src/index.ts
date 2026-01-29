@@ -10,6 +10,7 @@ import { AccountRotator, RateLimitReason } from './core/rotation';
 import { UnifiedModelHub } from './core/hub';
 import { sanitizeCrossModelRequest } from './utils/sanitizer';
 import { proxyFetch } from './core/proxy';
+import { enforceReasoning } from './core/reasoning';
 
 // Import Providers
 import { GeminiProvider } from './providers/gemini';
@@ -255,7 +256,12 @@ export class AuthMonster {
    */
   transformRequest(provider: AuthProvider, body: any, modelInProvider?: string): any {
     // 1. Cross-model signature sanitization (Gemini <-> Claude conflicts)
-    const sanitizedBody = sanitizeCrossModelRequest(body);
+    let sanitizedBody = sanitizeCrossModelRequest(body);
+
+    // 1.5. Reasoning Enforcer
+    if (this.config.thinking?.enabled) {
+       sanitizedBody = enforceReasoning(sanitizedBody, modelInProvider);
+    }
 
     // 2. Inject hub-selected model if present
     if (modelInProvider) {

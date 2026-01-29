@@ -8,6 +8,7 @@ const rotation_1 = require("./core/rotation");
 const hub_1 = require("./core/hub");
 const sanitizer_1 = require("./utils/sanitizer");
 const proxy_1 = require("./core/proxy");
+const reasoning_1 = require("./core/reasoning");
 // Import Providers
 const gemini_1 = require("./providers/gemini");
 const anthropic_1 = require("./providers/anthropic");
@@ -220,7 +221,11 @@ class AuthMonster {
      */
     transformRequest(provider, body, modelInProvider) {
         // 1. Cross-model signature sanitization (Gemini <-> Claude conflicts)
-        const sanitizedBody = (0, sanitizer_1.sanitizeCrossModelRequest)(body);
+        let sanitizedBody = (0, sanitizer_1.sanitizeCrossModelRequest)(body);
+        // 1.5. Reasoning Enforcer
+        if (this.config.thinking?.enabled) {
+            sanitizedBody = (0, reasoning_1.enforceReasoning)(sanitizedBody, modelInProvider);
+        }
         // 2. Inject hub-selected model if present
         if (modelInProvider) {
             sanitizedBody.model = modelInProvider;

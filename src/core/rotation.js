@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AccountRotator = exports.HealthScoreTracker = exports.DEFAULT_HEALTH_SCORE_CONFIG = void 0;
+const quota_manager_1 = require("./quota-manager");
 const QUOTA_EXHAUSTED_BACKOFFS = [60000, 300000, 1800000, 7200000];
 const RATE_LIMIT_EXCEEDED_BACKOFF = 30000;
 const MODEL_CAPACITY_EXHAUSTED_BACKOFF = 15000;
@@ -85,6 +86,12 @@ class AccountRotator {
                 return false;
             if (acc.cooldownUntil && now < acc.cooldownUntil)
                 return false;
+            // Check global cooldown manager
+            if ((0, quota_manager_1.isOnCooldown)(acc.provider, acc.id))
+                return false;
+            // Check explicit quota if available (Proactive check)
+            if (acc.quota && acc.quota.remaining <= 0)
+                return false;
             // Check health
             if (!this.healthTracker.isUsable(acc))
                 return false;
@@ -97,10 +104,21 @@ class AccountRotator {
                 return this.selectRoundRobin(availableAccounts);
             case 'hybrid':
                 return this.selectHybrid(availableAccounts);
+            case 'quota-optimized':
+                return this.selectQuotaOptimized(availableAccounts);
             case 'sticky':
             default:
                 return this.selectSticky(availableAccounts);
         }
+    }
+    selectQuotaOptimized(accounts) {
+        // Sort by remaining quota (descending)
+        const sorted = [...accounts].sort((a, b) => {
+            const quotaA = a.quota?.remaining ?? 1000;
+            const quotaB = b.quota?.remaining ?? 1000;
+            return quotaB - quotaA;
+        });
+        return sorted[0];
     }
     selectRoundRobin(accounts) {
         const account = accounts[this.cursor % accounts.length];

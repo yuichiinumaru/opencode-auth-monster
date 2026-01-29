@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UnifiedModelHub = void 0;
 const types_1 = require("./types");
+const thinking_validator_1 = require("./thinking-validator");
+const quota_manager_1 = require("./quota-manager");
 /**
  * UnifiedModelHub manages the mapping between generic model names
  * and the pool of providers/accounts that can serve them.
@@ -165,13 +167,37 @@ class UnifiedModelHub {
         this.modelMap.set(modelName.toLowerCase(), entries);
     }
     /**
+     * Validates and normalizes request parameters, particularly thinking budget.
+     */
+    validateRequest(provider, modelId, thinking) {
+        if (thinking === undefined)
+            return { valid: true };
+        return (0, thinking_validator_1.validateThinking)(provider, modelId, thinking);
+    }
+    /**
      * Selects the best (Provider, Account) combination to serve a request for a model.
+     * Uses fallback chain if primary model has no available accounts.
      *
      * @param modelName Generic model name (e.g., 'gemini-3-flash-preview')
      * @param allAccounts List of all managed accounts across all providers
+     * @param config Optional config to resolve fallbacks
      * @returns The selected provider, account, and provider-specific model name
      */
-    selectModelAccount(modelName, allAccounts) {
+    selectModelAccount(modelName, allAccounts, config) {
+        let modelsToTry = [modelName];
+        // If config is provided, resolve the full fallback chain
+        if (config) {
+            modelsToTry = this.resolveModelChain(modelName, config);
+        }
+        for (const model of modelsToTry) {
+            const selection = this.attemptSelectModelAccount(model, allAccounts);
+            if (selection) {
+                return selection;
+            }
+        }
+        return null;
+    }
+    attemptSelectModelAccount(modelName, allAccounts) {
         const hubEntries = this.modelMap.get(modelName.toLowerCase());
         // If no explicit mapping, we can't route via Hub
         if (!hubEntries)
@@ -234,6 +260,8 @@ class UnifiedModelHub {
         if (account.rateLimitResetTime && now < account.rateLimitResetTime)
             return false;
         if (account.cooldownUntil && now < account.cooldownUntil)
+            return false;
+        if ((0, quota_manager_1.isOnCooldown)(account.provider, account.id))
             return false;
         if (account.healthScore !== undefined && account.healthScore < 50)
             return false; // MIN_USABLE
