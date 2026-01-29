@@ -5,10 +5,13 @@ export enum AuthProvider {
   Windsurf = 'windsurf',
   Anthropic = 'anthropic',
   Cursor = 'cursor',
-  Kiro = 'kiro',
   Qwen = 'qwen',
+  IFlow = 'iflow',
   OpenAI = 'openai',
-  Copilot = 'copilot'
+  Copilot = 'copilot',
+  Kiro = 'kiro',
+  Zhipu = 'zhipu',
+  Minimax = 'minimax'
 }
 
 export type AuthMethod = 'sticky' | 'round-robin' | 'hybrid' | 'quota-optimized';

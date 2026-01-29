@@ -8,10 +8,13 @@ var AuthProvider;
     AuthProvider["Windsurf"] = "windsurf";
     AuthProvider["Anthropic"] = "anthropic";
     AuthProvider["Cursor"] = "cursor";
-    AuthProvider["Kiro"] = "kiro";
     AuthProvider["Qwen"] = "qwen";
+    AuthProvider["IFlow"] = "iflow";
     AuthProvider["OpenAI"] = "openai";
     AuthProvider["Copilot"] = "copilot";
+    AuthProvider["Kiro"] = "kiro";
+    AuthProvider["Zhipu"] = "zhipu";
+    AuthProvider["Minimax"] = "minimax";
 })(AuthProvider || (exports.AuthProvider = AuthProvider = {}));
 exports.AuthMonsterConfigSchema = zod_1.z.object({
     active: zod_1.z.nativeEnum(AuthProvider).default(AuthProvider.Gemini),

@@ -6,6 +6,11 @@ const anthropic_1 = require("../providers/anthropic");
 const gemini_1 = require("../providers/gemini");
 const windsurf_1 = require("../providers/windsurf");
 const cursor_1 = require("../providers/cursor");
+const qwen_1 = require("../providers/qwen");
+const iflow_1 = require("../providers/iflow");
+const kiro_1 = require("../providers/kiro");
+const zhipu_1 = require("../providers/zhipu");
+const minimax_1 = require("../providers/minimax");
 const extractor_1 = require("./extractor");
 // enquirer types are sometimes missing or incompatible with ESM/TS named imports
 const { MultiSelect, Confirm } = require('enquirer');
@@ -37,6 +42,10 @@ async function runOnboardingWizard(monster) {
             { name: types_1.AuthProvider.Windsurf, message: 'Windsurf' },
             { name: types_1.AuthProvider.OpenAI, message: 'OpenAI' },
             { name: types_1.AuthProvider.Qwen, message: 'Qwen' },
+            { name: types_1.AuthProvider.IFlow, message: 'iFlow' },
+            { name: types_1.AuthProvider.Kiro, message: 'Kiro (AWS)' },
+            { name: types_1.AuthProvider.Zhipu, message: 'Zhipu AI' },
+            { name: types_1.AuthProvider.Minimax, message: 'MiniMax' },
         ]
     }).run();
     if (providersResponse.length === 0) {
@@ -94,6 +103,68 @@ async function runOnboardingWizard(monster) {
                         else {
                             console.log("Could not discover local Cursor account. Please ensure you are logged in to Cursor.");
                         }
+                    }
+                    else if (provider === types_1.AuthProvider.Qwen) {
+                        const tokens = await qwen_1.QwenProvider.login();
+                        await monster.addAccount({
+                            id: Math.random().toString(36).substring(2, 11),
+                            email: 'interactive@qwen.ai',
+                            provider: types_1.AuthProvider.Qwen,
+                            tokens,
+                            isHealthy: true,
+                            healthScore: 100
+                        });
+                    }
+                    else if (provider === types_1.AuthProvider.IFlow) {
+                        const result = await iflow_1.IFlowProvider.login();
+                        await monster.addAccount({
+                            id: Math.random().toString(36).substring(2, 11),
+                            email: result.email || 'interactive@iflow.cn',
+                            provider: types_1.AuthProvider.IFlow,
+                            tokens: {
+                                accessToken: result.accessToken,
+                                refreshToken: result.refreshToken,
+                                expiryDate: result.expiryDate,
+                                tokenType: result.tokenType
+                            },
+                            apiKey: result.apiKey,
+                            isHealthy: true,
+                            healthScore: 100
+                        });
+                    }
+                    else if (provider === types_1.AuthProvider.Kiro) {
+                        const account = await kiro_1.KiroProvider.discoverAccount();
+                        if (account) {
+                            await monster.addAccount(account);
+                            console.log(`Discovered local Kiro/AWS account: ${account.email}`);
+                        }
+                        else {
+                            console.log("Could not discover local Kiro/AWS account in ~/.aws/sso/cache.");
+                        }
+                    }
+                    else if (provider === types_1.AuthProvider.Zhipu) {
+                        const { apiKey } = await zhipu_1.ZhipuProvider.login();
+                        await monster.addAccount({
+                            id: Math.random().toString(36).substring(2, 11),
+                            email: 'user@zhipu',
+                            provider: types_1.AuthProvider.Zhipu,
+                            tokens: { accessToken: '' }, // API Key only
+                            apiKey,
+                            isHealthy: true,
+                            healthScore: 100
+                        });
+                    }
+                    else if (provider === types_1.AuthProvider.Minimax) {
+                        const { apiKey } = await minimax_1.MinimaxProvider.login();
+                        await monster.addAccount({
+                            id: Math.random().toString(36).substring(2, 11),
+                            email: 'user@minimax',
+                            provider: types_1.AuthProvider.Minimax,
+                            tokens: { accessToken: '' },
+                            apiKey,
+                            isHealthy: true,
+                            healthScore: 100
+                        });
                     }
                     else {
                         console.log(`Interactive login not yet implemented for ${provider}. Please use 'add' command manually.`);

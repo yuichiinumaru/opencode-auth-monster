@@ -41,6 +41,98 @@ class UnifiedModelHub {
             { provider: types_1.AuthProvider.Windsurf, modelInProvider: 'gpt-5.2-codex' },
             { provider: types_1.AuthProvider.Copilot, modelInProvider: 'gpt-5.2-codex' }
         ]);
+        // NEW HARVESTED MODELS (Mark III)
+        // Claude 3.7 Sonnet (Latest)
+        this.addMapping('claude-3-7-sonnet-20250219', [
+            { provider: types_1.AuthProvider.Anthropic, modelInProvider: 'claude-3-7-sonnet-20250219' },
+            { provider: types_1.AuthProvider.Windsurf, modelInProvider: 'claude-3-7-sonnet' },
+            { provider: types_1.AuthProvider.Cursor, modelInProvider: 'claude-3.7-sonnet' }
+        ]);
+        // Claude 4.5 Sonnet (Internal ID -> Provider ID)
+        this.addMapping('claude-sonnet-4-5', [
+            { provider: types_1.AuthProvider.Anthropic, modelInProvider: 'CLAUDE_SONNET_4_5_20250929_V1_0' },
+            { provider: types_1.AuthProvider.Cursor, modelInProvider: 'claude-4.5-sonnet' }
+        ]);
+        // DeepSeek R1 (Reasoning)
+        this.addMapping('deepseek-r1', [
+            { provider: types_1.AuthProvider.Qwen, modelInProvider: 'deepseek-r1' }, // Qwen provider often proxies DeepSeek
+            { provider: types_1.AuthProvider.Windsurf, modelInProvider: 'deepseek-reasoner' }
+        ]);
+        // Qwen 3 Coder Plus
+        this.addMapping('qwen3-coder-plus', [
+            { provider: types_1.AuthProvider.Qwen, modelInProvider: 'qwen3-coder-plus' }
+        ]);
+        // --- MARK VI: EXPANSION (Protocol: NET_CRAWLER) ---
+        // Anthropic: Claude 4.5 Haiku
+        this.addMapping('claude-haiku-4-5', [
+            { provider: types_1.AuthProvider.Anthropic, modelInProvider: 'claude-haiku-4-5-20251001' },
+            { provider: types_1.AuthProvider.Windsurf, modelInProvider: 'claude-haiku-4.5' }
+        ]);
+        // Gemini: 2.5 Family (The "Workhorse" Suite)
+        this.addMapping('gemini-2.5-pro', [
+            { provider: types_1.AuthProvider.Gemini, modelInProvider: 'gemini-2.5-pro' },
+            { provider: types_1.AuthProvider.Windsurf, modelInProvider: 'gemini-2.5-pro' }
+        ]);
+        this.addMapping('gemini-2.5-flash', [
+            { provider: types_1.AuthProvider.Gemini, modelInProvider: 'gemini-2.5-flash' },
+            { provider: types_1.AuthProvider.Windsurf, modelInProvider: 'gemini-2.5-flash' }
+        ]);
+        this.addMapping('gemini-2.5-flash-lite', [
+            { provider: types_1.AuthProvider.Gemini, modelInProvider: 'gemini-2.5-flash-lite' }
+        ]);
+        this.addMapping('gemini-2.5-flash-image', [
+            { provider: types_1.AuthProvider.Gemini, modelInProvider: 'gemini-2.5-flash-image' }
+        ]);
+        // OpenAI: GPT-5 Family
+        this.addMapping('gpt-5.2-pro', [
+            { provider: types_1.AuthProvider.OpenAI, modelInProvider: 'gpt-5.2-pro' },
+            { provider: types_1.AuthProvider.Copilot, modelInProvider: 'gpt-5.2-pro' }
+        ]);
+        this.addMapping('gpt-5-mini', [
+            { provider: types_1.AuthProvider.OpenAI, modelInProvider: 'gpt-5-mini' }
+        ]);
+        this.addMapping('gpt-5-nano', [
+            { provider: types_1.AuthProvider.OpenAI, modelInProvider: 'gpt-5-nano' }
+        ]);
+        // OpenAI: Deep Research (Reasoning)
+        this.addMapping('o3-deep-research', [
+            { provider: types_1.AuthProvider.OpenAI, modelInProvider: 'o3-deep-research' }
+        ]);
+        this.addMapping('o4-mini-deep-research', [
+            { provider: types_1.AuthProvider.OpenAI, modelInProvider: 'o4-mini-deep-research' }
+        ]);
+        // OpenAI: Sora (Video)
+        this.addMapping('sora-2', [
+            { provider: types_1.AuthProvider.OpenAI, modelInProvider: 'sora-2' }
+        ]);
+        this.addMapping('sora-2-pro', [
+            { provider: types_1.AuthProvider.OpenAI, modelInProvider: 'sora-2-pro' }
+        ]);
+        // DeepSeek: V3.2 Exp
+        this.addMapping('deepseek-v3.2-exp', [
+            { provider: types_1.AuthProvider.Qwen, modelInProvider: 'deepseek-v3.2-exp' } // Via Qwen Proxy
+        ]);
+        // Qwen Models
+        this.addMapping('qwen-max', [
+            { provider: types_1.AuthProvider.Qwen, modelInProvider: 'qwen-max' }
+        ]);
+        this.addMapping('qwen-plus', [
+            { provider: types_1.AuthProvider.Qwen, modelInProvider: 'qwen-plus' }
+        ]);
+        this.addMapping('qwen-turbo', [
+            { provider: types_1.AuthProvider.Qwen, modelInProvider: 'qwen-turbo' }
+        ]);
+        // iFlow Models
+        this.addMapping('iflow-chat', [
+            { provider: types_1.AuthProvider.IFlow, modelInProvider: 'iflow-chat' }
+        ]);
+        // Kiro (AWS) Models
+        this.addMapping('codewhisperer', [
+            { provider: types_1.AuthProvider.Kiro, modelInProvider: 'codewhisperer-analysis' }
+        ]);
+        this.addMapping('amazon-q-dev', [
+            { provider: types_1.AuthProvider.Kiro, modelInProvider: 'amazon-q-developer' }
+        ]);
     }
     /**
      * Resolves the chain of models to try for a request, based on fallback configuration.
