@@ -40,6 +40,13 @@ export interface ManagedAccount {
   cooldownUntil?: number;
   lastSwitchReason?: string;
 
+  // Usage Stats (Phase 3)
+  usage?: {
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalCost: number; // USD
+  };
+
   // Quota Management
   quota?: {
     limit: number;
