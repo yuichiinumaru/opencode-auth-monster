@@ -3,7 +3,7 @@ import { proxyFetch } from '../../core/proxy';
 import { listenForCode } from '../../utils/oauth-server';
 
 const CLIENT_ID = "10009311001";
-const CLIENT_SECRET = process.env.IFLOW_CLIENT_SECRET || "4Z3YjXycVsQvyGF1etiNlIBB4RsqSDtW";
+const CLIENT_SECRET = process.env.IFLOW_CLIENT_SECRET || "";
 const AUTH_URL = "https://iflow.cn/oauth";
 const TOKEN_URL = "https://iflow.cn/oauth/token";
 const USER_INFO_URL = "https://iflow.cn/api/oauth/getUserInfo";

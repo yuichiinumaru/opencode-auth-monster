@@ -125,7 +125,10 @@ export class AccountRotator {
       // Check global cooldown manager
       if (isOnCooldown(acc.provider, acc.id)) return false;
 
-      // Check health
+      // Check explicit health flag
+      if (acc.isHealthy === false) return false;
+
+      // Check health score
       if (!this.healthTracker.isUsable(acc)) return false;
 
       return true;
