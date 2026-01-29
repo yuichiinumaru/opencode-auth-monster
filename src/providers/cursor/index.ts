@@ -29,6 +29,10 @@ export class CursorProvider {
     };
   }
 
+  getUrl(model: string, account: ManagedAccount): string {
+    return `${CURSOR_API_BASE_URL}/aiserver.v1.AiService/StreamChat`;
+  }
+
   /**
    * Refresh the access token using the refresh token
    */

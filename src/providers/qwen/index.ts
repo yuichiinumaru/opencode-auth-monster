@@ -38,6 +38,10 @@ export class QwenProvider {
     return headers;
   }
 
+  static getUrl(model: string, account: ManagedAccount): string {
+    return "https://chat.qwen.ai/api/v1/chat/completions";
+  }
+
   static async refreshTokens(account: ManagedAccount): Promise<ManagedAccount> {
     if (!account.tokens.refreshToken) {
       return account;
