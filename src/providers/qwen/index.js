@@ -64,6 +64,9 @@ class QwenProvider {
         }
         return headers;
     }
+    static getUrl(model, account) {
+        return "https://chat.qwen.ai/api/v1/chat/completions";
+    }
     static async refreshTokens(account) {
         if (!account.tokens.refreshToken) {
             return account;

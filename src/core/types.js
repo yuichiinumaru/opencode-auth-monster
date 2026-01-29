@@ -15,6 +15,10 @@ var AuthProvider;
     AuthProvider["Kiro"] = "kiro";
     AuthProvider["Zhipu"] = "zhipu";
     AuthProvider["Minimax"] = "minimax";
+    AuthProvider["Azure"] = "azure";
+    AuthProvider["Grok"] = "grok";
+    AuthProvider["DeepSeek"] = "deepseek";
+    AuthProvider["Generic"] = "generic";
 })(AuthProvider || (exports.AuthProvider = AuthProvider = {}));
 exports.AuthMonsterConfigSchema = zod_1.z.object({
     active: zod_1.z.nativeEnum(AuthProvider).default(AuthProvider.Gemini),
@@ -27,6 +31,16 @@ exports.AuthMonsterConfigSchema = zod_1.z.object({
         'gpt-5.2-codex': ['claude-4.5-opus-thinking', 'gemini-3-pro-preview']
     }),
     fallbackDirection: zod_1.z.enum(['up', 'down']).default('down'),
+    thinking: zod_1.z.object({
+        enabled: zod_1.z.boolean().default(true),
+        defaultBudget: zod_1.z.number().default(1024),
+        defaultLevel: zod_1.z.string().default('low')
+    }).optional(),
+    quota: zod_1.z.object({
+        enabled: zod_1.z.boolean().default(true),
+        cooldownMinutes: zod_1.z.number().default(5),
+        preflightCheck: zod_1.z.boolean().default(true)
+    }).optional(),
     providers: zod_1.z.record(zod_1.z.string(), zod_1.z.object({
         enabled: zod_1.z.boolean().default(true),
         profile: zod_1.z.string().optional(),

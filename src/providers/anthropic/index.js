@@ -30,6 +30,9 @@ class AnthropicProvider {
         }
         return headers;
     }
+    static getUrl(model, account) {
+        return "https://api.anthropic.com/v1/messages";
+    }
     static async refreshTokens(account) {
         if (!account.tokens.refreshToken) {
             return account;

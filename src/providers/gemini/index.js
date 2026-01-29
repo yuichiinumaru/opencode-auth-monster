@@ -28,6 +28,9 @@ class GeminiProvider {
         }
         return headers;
     }
+    static getUrl(model, account) {
+        return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    }
     static async refreshTokens(account) {
         if (!account.tokens.refreshToken) {
             return account;

@@ -6,6 +6,7 @@ const index_1 = require("./index");
 const config_1 = require("./core/config");
 const storage_1 = require("./core/storage");
 const types_1 = require("./core/types");
+const quota_manager_1 = require("./core/quota-manager");
 const anthropic_1 = require("./providers/anthropic");
 const gemini_1 = require("./providers/gemini");
 const github_sync_1 = require("./utils/github-sync");
@@ -110,6 +111,7 @@ async function main() {
     program.command('status')
         .description('Show general system health and current active provider')
         .action(async () => {
+        console.log(`\n=== System Status ===`);
         console.log(`Active Provider: ${config.active}`);
         console.log(`Fallback Providers: ${config.fallback.join(', ') || 'None'}`);
         console.log(`Rotation Method: ${config.method}`);
@@ -117,6 +119,44 @@ async function main() {
         const healthyCount = accounts.filter(a => a.isHealthy).length;
         console.log(`Total Accounts: ${accounts.length}`);
         console.log(`Healthy Accounts: ${healthyCount}`);
+    });
+    program.command('quota')
+        .description('Show detailed quota usage for all accounts')
+        .action(async () => {
+        const accounts = await storageManager.loadAccounts();
+        if (accounts.length === 0) {
+            console.log('No accounts found.');
+            return;
+        }
+        console.log('\n=== Quota Usage ===\n');
+        const tableData = accounts.map(a => {
+            let quotaInfo = 'Unlimited';
+            let cooldown = 'Active';
+            const quota = (0, quota_manager_1.extractQuota)(a);
+            if (quota.remaining < 1000) {
+                quotaInfo = `${quota.remaining.toFixed(1)}%`;
+            }
+            const cooldownStatus = (0, quota_manager_1.getCooldownStatus)(a.provider, a.id);
+            if (cooldownStatus.active && cooldownStatus.until) {
+                const minLeft = Math.ceil((cooldownStatus.until - Date.now()) / 60000);
+                cooldown = `Cooldown (${minLeft}m)`;
+            }
+            else if (a.cooldownUntil && a.cooldownUntil > Date.now()) {
+                const minLeft = Math.ceil((a.cooldownUntil - Date.now()) / 60000);
+                cooldown = `Cooldown (${minLeft}m)`;
+            }
+            else if (!a.isHealthy) {
+                cooldown = 'Unhealthy';
+            }
+            return {
+                ID: a.id.substring(0, 8),
+                Provider: a.provider,
+                Email: a.email,
+                Quota: quotaInfo,
+                Status: cooldown
+            };
+        });
+        console.table(tableData);
     });
     program.command('switch')
         .description('Change the active provider in the config')

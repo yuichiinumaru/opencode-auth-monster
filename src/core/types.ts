@@ -11,7 +11,11 @@ export enum AuthProvider {
   Copilot = 'copilot',
   Kiro = 'kiro',
   Zhipu = 'zhipu',
-  Minimax = 'minimax'
+  Minimax = 'minimax',
+  Azure = 'azure',
+  Grok = 'grok',
+  DeepSeek = 'deepseek',
+  Generic = 'generic'
 }
 
 export type AuthMethod = 'sticky' | 'round-robin' | 'hybrid' | 'quota-optimized';

@@ -18,6 +18,9 @@ const iflow_1 = require("./providers/iflow");
 const kiro_1 = require("./providers/kiro");
 const zhipu_1 = require("./providers/zhipu");
 const minimax_1 = require("./providers/minimax");
+const azure_1 = require("./providers/azure");
+const grok_1 = require("./providers/grok");
+const deepseek_1 = require("./providers/deepseek");
 class AuthMonster {
     constructor(context) {
         this.accounts = [];
@@ -97,7 +100,11 @@ class AuthMonster {
                 if (body && typeof body === 'object' && !(body instanceof FormData) && !(body instanceof Blob)) {
                     body = JSON.stringify(this.transformRequest(auth.provider, body, auth.modelInProvider));
                 }
-                const response = await (0, proxy_1.proxyFetch)(url, {
+                const targetUrl = this.getRequestUrl(auth.provider, auth.modelInProvider || model, auth.account) || url;
+                if (auth.provider === types_1.AuthProvider.Windsurf) {
+                    return this.handleWindsurfRequest(auth, options);
+                }
+                const response = await (0, proxy_1.proxyFetch)(targetUrl, {
                     ...options,
                     headers,
                     body
@@ -203,6 +210,12 @@ class AuthMonster {
                 return zhipu_1.ZhipuProvider.getHeaders(account);
             case types_1.AuthProvider.Minimax:
                 return minimax_1.MinimaxProvider.getHeaders(account);
+            case types_1.AuthProvider.Azure:
+                return azure_1.AzureProvider.getHeaders(account);
+            case types_1.AuthProvider.Grok:
+                return grok_1.GrokProvider.getHeaders(account);
+            case types_1.AuthProvider.DeepSeek:
+                return deepseek_1.DeepSeekProvider.getHeaders(account);
             default:
                 // Default header generation fallback
                 const headers = {};
@@ -245,6 +258,61 @@ class AuthMonster {
             default:
                 return text;
         }
+    }
+    getRequestUrl(provider, model, account) {
+        if (provider === types_1.AuthProvider.Generic ||
+            (this.config.providers && this.config.providers[provider]?.options?.baseUrl)) {
+            const baseUrl = this.config.providers[provider]?.options?.baseUrl;
+            if (baseUrl) {
+                return `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+            }
+        }
+        switch (provider) {
+            case types_1.AuthProvider.Gemini: return gemini_1.GeminiProvider.getUrl(model, account);
+            case types_1.AuthProvider.Anthropic: return anthropic_1.AnthropicProvider.getUrl(model, account);
+            case types_1.AuthProvider.Cursor: return cursor_1.cursorProvider.getUrl(model, account);
+            case types_1.AuthProvider.Windsurf: return windsurf_1.WindsurfProvider.getUrl(model, account);
+            case types_1.AuthProvider.Qwen: return qwen_1.QwenProvider.getUrl(model, account);
+            case types_1.AuthProvider.Azure: return azure_1.AzureProvider.getUrl(model, account);
+            case types_1.AuthProvider.Grok: return grok_1.GrokProvider.getUrl(model, account);
+            case types_1.AuthProvider.DeepSeek: return deepseek_1.DeepSeekProvider.getUrl(model, account);
+            default: return null;
+        }
+    }
+    async handleWindsurfRequest(auth, options) {
+        let messages = [];
+        let model = auth.modelInProvider || 'default';
+        try {
+            const bodyObj = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+            if (bodyObj) {
+                messages = bodyObj.messages || [];
+                if (bodyObj.model)
+                    model = bodyObj.model;
+            }
+        }
+        catch (e) { }
+        const credentials = {
+            apiKey: auth.account.apiKey || auth.account.tokens.accessToken,
+            port: auth.account.metadata?.port,
+            csrfToken: auth.account.metadata?.csrfToken,
+            version: auth.account.metadata?.version
+        };
+        if (!credentials.apiKey || !credentials.port || !credentials.csrfToken) {
+            throw new Error("Missing Windsurf credentials (port, csrfToken, or apiKey)");
+        }
+        const text = await (0, windsurf_1.streamChat)(credentials, { model, messages });
+        return new Response(JSON.stringify({
+            id: 'chatcmpl-' + Date.now(),
+            object: 'chat.completion',
+            created: Math.floor(Date.now() / 1000),
+            model: model,
+            choices: [{
+                    index: 0,
+                    message: { role: 'assistant', content: text },
+                    finish_reason: 'stop'
+                }],
+            usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     /**
      * Returns all managed accounts (including tokens)

@@ -28,6 +28,9 @@ class CursorProvider {
             "host": new URL(CURSOR_API_BASE_URL).host,
         };
     }
+    getUrl(model, account) {
+        return `${CURSOR_API_BASE_URL}/aiserver.v1.AiService/StreamChat`;
+    }
     /**
      * Refresh the access token using the refresh token
      */

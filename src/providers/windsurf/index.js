@@ -28,6 +28,10 @@ class WindsurfProvider {
         }
         return headers;
     }
+    static getUrl(model, account) {
+        const port = account.metadata?.port || 0;
+        return `http://localhost:${port}/exa.language_server_pb.LanguageServerService/RawGetChatMessage`;
+    }
     static async refreshTokens(account) {
         try {
             // Re-discover credentials
