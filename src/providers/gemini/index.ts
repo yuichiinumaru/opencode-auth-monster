@@ -32,6 +32,10 @@ export class GeminiProvider {
     return headers;
   }
 
+  static getUrl(model: string, account: ManagedAccount): string {
+    return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  }
+
   static async refreshTokens(account: ManagedAccount): Promise<ManagedAccount> {
     if (!account.tokens.refreshToken) {
       return account;
