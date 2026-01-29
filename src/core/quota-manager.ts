@@ -92,6 +92,20 @@ export function isOnCooldown(provider: AuthProvider, accountId: string): boolean
   return true;
 }
 
+export function getCooldownStatus(provider: AuthProvider, accountId: string): { active: boolean, until?: number } {
+  const key = getCacheKey(provider, accountId);
+  const entry = cooldownMap.get(key);
+
+  if (!entry) return { active: false };
+
+  if (Date.now() > entry.until) {
+    cooldownMap.delete(key);
+    return { active: false };
+  }
+
+  return { active: true, until: entry.until };
+}
+
 /**
  * Apply cooldown to an exhausted account
  */
