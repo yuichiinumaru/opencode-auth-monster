@@ -63,7 +63,7 @@ export class AuthMonster {
       for (const modelName of modelChain) {
         const hubChoice = this.hub.selectModelAccount(modelName, this.accounts);
         if (hubChoice) {
-          const details = this.selectAccount(hubChoice.provider, [hubChoice.account], hubChoice.modelInProvider);
+          const details = await this.selectAccount(hubChoice.provider, [hubChoice.account], hubChoice.modelInProvider);
           if (details) return details;
         }
       }
@@ -78,16 +78,16 @@ export class AuthMonster {
       for (const fallbackProvider of this.config.fallback) {
         const fallbackAccounts = this.accounts.filter(a => a.provider === fallbackProvider);
         if (fallbackAccounts.length > 0) {
-          return this.selectAccount(fallbackProvider, fallbackAccounts);
+          return await this.selectAccount(fallbackProvider, fallbackAccounts);
         }
       }
       return null;
     }
 
-    return this.selectAccount(targetProvider, providerAccounts);
+    return await this.selectAccount(targetProvider, providerAccounts);
   }
 
-  private selectAccount(provider: AuthProvider, accounts: ManagedAccount[], modelInProvider?: string): AuthDetails | null {
+  private async selectAccount(provider: AuthProvider, accounts: ManagedAccount[], modelInProvider?: string): Promise<AuthDetails | null> {
     const account = this.rotator.selectAccount(accounts, this.config.method);
     
     if (!account) {
@@ -102,7 +102,7 @@ export class AuthMonster {
       this.lastUsedAccountId = account.id;
     }
     
-    const headers = this.getHeadersForAccount(provider, account);
+    const headers = await this.getHeadersForAccount(provider, account);
 
     return {
       provider,
@@ -290,7 +290,7 @@ export class AuthMonster {
     if (!isReasoningModel) return;
 
     try {
-      const headers = this.getHeadersForAccount(account.provider, account);
+      const headers = await this.getHeadersForAccount(account.provider, account);
       const url = account.apiKey 
         ? "https://api.anthropic.com/v1/messages" 
         : "https://console.anthropic.com/api/v1/messages";
@@ -323,7 +323,7 @@ export class AuthMonster {
   /**
    * Generates headers using provider-specific logic
    */
-  private getHeadersForAccount(provider: AuthProvider, account: ManagedAccount): Record<string, string> {
+  private async getHeadersForAccount(provider: AuthProvider, account: ManagedAccount): Promise<Record<string, string>> {
     switch (provider) {
       case AuthProvider.Gemini:
         return GeminiProvider.getHeaders(account);
@@ -350,7 +350,7 @@ export class AuthMonster {
       case AuthProvider.DeepSeek:
         return DeepSeekProvider.getHeaders(account);
       case AuthProvider.Generic:
-        return GenericProvider.getHeaders(account);
+        return await GenericProvider.getHeaders(account);
       default:
         // Default header generation fallback
         const headers: Record<string, string> = {};
