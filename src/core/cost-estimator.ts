@@ -17,11 +17,19 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
   'claude-3-opus': { inputCostPer1M: 15.00, outputCostPer1M: 75.00 },
   'claude-4.5-opus-thinking': { inputCostPer1M: 20.00, outputCostPer1M: 100.00 }, // Estimated
 
-  // OpenAI
+  // OpenAI / Azure
   'gpt-4o': { inputCostPer1M: 5.00, outputCostPer1M: 15.00 },
   'gpt-4o-mini': { inputCostPer1M: 0.15, outputCostPer1M: 0.60 },
   'o1-preview': { inputCostPer1M: 15.00, outputCostPer1M: 60.00 },
   'o1-mini': { inputCostPer1M: 3.00, outputCostPer1M: 12.00 },
+
+  // DeepSeek
+  'deepseek-chat': { inputCostPer1M: 0.14, outputCostPer1M: 0.28 }, // Cached/Uncached split avg
+  'deepseek-reasoner': { inputCostPer1M: 0.55, outputCostPer1M: 2.19 }, // R1
+
+  // Grok (xAI)
+  'grok-beta': { inputCostPer1M: 5.00, outputCostPer1M: 15.00 }, // Estimated based on market
+  'grok-vision-beta': { inputCostPer1M: 5.00, outputCostPer1M: 15.00 },
 
   // Generic Fallbacks
   'gpt-4': { inputCostPer1M: 30.00, outputCostPer1M: 60.00 },
@@ -49,12 +57,22 @@ export class CostEstimator {
   }
 
   private static getPricing(model: string): ModelPricing {
+    if (!model) return DEFAULT_PRICING;
+    const normalized = model.toLowerCase();
+
     // Exact match
-    if (PRICING_TABLE[model]) return PRICING_TABLE[model];
+    if (PRICING_TABLE[normalized]) return PRICING_TABLE[normalized];
 
     // Fuzzy match / Substring match
-    // e.g. "claude-3-5-sonnet-20241022" should match "claude-3-5-sonnet"
-    const key = Object.keys(PRICING_TABLE).find(k => model.includes(k));
+    // Prioritize specific providers
+    if (normalized.includes('deepseek')) {
+        if (normalized.includes('reasoner') || normalized.includes('r1')) return PRICING_TABLE['deepseek-reasoner'];
+        return PRICING_TABLE['deepseek-chat'];
+    }
+
+    if (normalized.includes('grok')) return PRICING_TABLE['grok-beta'];
+
+    const key = Object.keys(PRICING_TABLE).find(k => normalized.includes(k));
     if (key) return PRICING_TABLE[key];
 
     return DEFAULT_PRICING;

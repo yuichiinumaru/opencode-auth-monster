@@ -12,6 +12,7 @@ import { sanitizeCrossModelRequest } from './utils/sanitizer';
 import { proxyFetch } from './core/proxy';
 import { CostEstimator } from './core/cost-estimator';
 import { HistoryManager } from './core/history';
+import { enforceReasoning } from './core/reasoning';
 
 // Import Providers
 import { GeminiProvider } from './providers/gemini';
@@ -26,6 +27,7 @@ import { MinimaxProvider } from './providers/minimax';
 import { AzureProvider } from './providers/azure';
 import { GrokProvider } from './providers/grok';
 import { DeepSeekProvider } from './providers/deepseek';
+import { GenericProvider } from './providers/generic';
 
 export { RateLimitReason };
 
@@ -347,6 +349,8 @@ export class AuthMonster {
         return GrokProvider.getHeaders(account);
       case AuthProvider.DeepSeek:
         return DeepSeekProvider.getHeaders(account);
+      case AuthProvider.Generic:
+        return GenericProvider.getHeaders(account);
       default:
         // Default header generation fallback
         const headers: Record<string, string> = {};
@@ -364,7 +368,12 @@ export class AuthMonster {
    */
   transformRequest(provider: AuthProvider, body: any, modelInProvider?: string): any {
     // 1. Cross-model signature sanitization (Gemini <-> Claude conflicts)
-    const sanitizedBody = sanitizeCrossModelRequest(body);
+    let sanitizedBody = sanitizeCrossModelRequest(body);
+
+    // 1.5. Reasoning Enforcer
+    if (this.config.thinking?.enabled) {
+       sanitizedBody = enforceReasoning(sanitizedBody, modelInProvider);
+    }
 
     // 2. Inject hub-selected model if present
     if (modelInProvider) {
@@ -412,6 +421,7 @@ export class AuthMonster {
       case AuthProvider.Azure: return AzureProvider.getUrl(model, account);
       case AuthProvider.Grok: return GrokProvider.getUrl(model, account);
       case AuthProvider.DeepSeek: return DeepSeekProvider.getUrl(model, account);
+      case AuthProvider.Generic: return GenericProvider.getUrl(model, account);
       default: return null;
     }
   }

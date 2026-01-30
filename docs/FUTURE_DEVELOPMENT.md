@@ -6,26 +6,26 @@ This roadmap is derived from a deep analysis of reference repositories (`CLIProx
 
 These tasks address core stability and security gaps identified when comparing against `CLIProxyAPI` and `ProxyPilot`.
 
-- [ ] **Secure Secret Storage**: Move away from plain JSON files for token storage. Implement OS-level keychain integration (Keytar or similar) like `ProxyPilot` and `CCS` do for production environments.
-- [ ] **Encryption at Rest**: If file storage must be used, encrypt the `auth-monster-accounts.json` file using a user-provided passphrase or machine-specific key.
-- [ ] **Token Refresh Robustness**: Implement a dedicated `TokenRefresher` service that runs in the background (or on-demand with mutex locks) to prevent race conditions during parallel requests. `CLIProxyAPI` has a sophisticated `refresh_registry`.
+- [x] **Secure Secret Storage**: Move away from plain JSON files for token storage. Implement OS-level keychain integration (Keytar or similar) like `ProxyPilot` and `CCS` do for production environments.
+- [x] **Encryption at Rest**: If file storage must be used, encrypt the `auth-monster-accounts.json` file using a user-provided passphrase or machine-specific key.
+- [x] **Token Refresh Robustness**: Implement a dedicated `TokenRefresher` service that runs in the background (or on-demand with mutex locks) to prevent race conditions during parallel requests. `CLIProxyAPI` has a sophisticated `refresh_registry`.
 - [ ] **Socket/Pipe Transport**: Support named pipes (Windows) or Unix domain sockets for local communication to avoid TCP port conflicts and improve security (seen in `ProxyPilot`).
 
 ## Phase 2: Provider Expansion & Protocol Support
 
 Expand the ecosystem to support more AI providers and communication protocols, matching the breadth of `CLIProxyAPI`.
 
-- [ ] **Azure OpenAI / Foundry Support**: Add an `AzureProvider` to support enterprise deployments (seen in `CCS`).
-- [ ] **Grok / xAI Support**: Add `GrokProvider`.
-- [ ] **DeepSeek Native**: Support DeepSeek API directly (not just via Qwen proxy).
+- [x] **Azure OpenAI / Foundry Support**: Add an `AzureProvider` to support enterprise deployments (seen in `CCS`).
+- [x] **Grok / xAI Support**: Add `GrokProvider`.
+- [x] **DeepSeek Native**: Support DeepSeek API directly (not just via Qwen proxy).
 - [ ] **SSE & gRPC Handling**: Ensure the core proxy (`https-tunnel-proxy`) can gracefully handle Server-Sent Events (SSE) and potentially gRPC for newer model protocols (Windsurf uses gRPC).
-- [ ] **Custom Provider Config**: Allow users to define "Generic OpenAI-compatible" providers via config, so they can add local LLMs (Ollama, LM Studio) without code changes.
+- [x] **Custom Provider Config**: Allow users to define "Generic OpenAI-compatible" providers via config, so they can add local LLMs (Ollama, LM Studio) without code changes.
 
 ## Phase 3: Advanced Traffic Management
 
 Implement sophisticated traffic shaping and analysis features found in `CCS` and `ProxyPilot`.
 
-- [ ] **Cost Tracking & Estimation**: Implement a `CostEstimator` that tracks input/output tokens and calculates estimated spend based on known model pricing (seen in `CodMate` and `CCS`).
+- [x] **Cost Tracking & Estimation**: Implement a `CostEstimator` that tracks input/output tokens and calculates estimated spend based on known model pricing (seen in `CodMate` and `CCS`).
 - [ ] **Request/Response Redaction**: Add a middleware layer to redact sensitive information (API keys, PII) from logs and debug outputs.
 - [ ] **Session Replay/History**: Store request history (metadata only or full content option) to allow users to review past interactions or "replay" failed requests.
 - [ ] **Rate Limit "Parking"**: Instead of just failing or rotating, implement a "parking" queue that holds requests until a specific account's rate limit resets (if it's the only one available).

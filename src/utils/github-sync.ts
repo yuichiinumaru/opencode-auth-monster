@@ -7,8 +7,9 @@ import { ManagedAccount } from '../core/types';
  * 
  * @param repo Repository in 'owner/repo' format.
  * @param accounts List of managed accounts to sync.
+ * @param token Optional GitHub PAT to use for authentication.
  */
-export async function syncToGitHub(repo: string, accounts: ManagedAccount[]): Promise<void> {
+export async function syncToGitHub(repo: string, accounts: ManagedAccount[], token?: string): Promise<void> {
   try {
     // Check if gh CLI is installed
     try {
@@ -37,10 +38,16 @@ export async function syncToGitHub(repo: string, accounts: ManagedAccount[]): Pr
     
     console.log(`Syncing ${accounts.length} accounts to GitHub secret ${secretName} in ${repo}...`);
     
+    const env = { ...process.env };
+    if (token) {
+        env.GITHUB_TOKEN = token;
+    }
+
     execSync(command, { 
       input: jsonData, 
       stdio: ['pipe', 'inherit', 'inherit'],
-      encoding: 'utf8' 
+      encoding: 'utf8',
+      env
     });
     
     console.log(`Successfully synced!`);

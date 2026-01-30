@@ -1,23 +1,14 @@
-import { AuthProvider, ManagedAccount } from '../../core/types';
+import { ManagedAccount } from '../../core/types';
 
 export class GrokProvider {
-  static readonly provider = AuthProvider.Grok;
-
   static getHeaders(account: ManagedAccount): Record<string, string> {
-    const headers: Record<string, string> = {
+    return {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${account.apiKey || ''}`
     };
-
-    if (account.apiKey) {
-      headers['Authorization'] = `Bearer ${account.apiKey}`;
-    } else if (account.tokens.accessToken) {
-        headers['Authorization'] = `Bearer ${account.tokens.accessToken}`;
-    }
-
-    return headers;
   }
 
   static getUrl(model: string, account: ManagedAccount): string {
-    return "https://api.x.ai/v1/chat/completions";
+    return 'https://api.x.ai/v1/chat/completions';
   }
 }

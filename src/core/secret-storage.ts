@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as crypto from 'crypto';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
@@ -9,33 +10,71 @@ const execAsync = promisify(exec);
 export class SecretStorage {
   private useKeychain: boolean;
   private storagePath: string;
+  private encryptionKey: Buffer;
 
   constructor(storageDir: string) {
     this.storagePath = path.join(storageDir, 'auth-monster-secrets.json');
     this.useKeychain = os.platform() === 'darwin';
+    this.encryptionKey = this.deriveKey();
+  }
+
+  // Derive a stable, machine-specific key without requiring user input.
+  // This isn't perfect security (root can read it), but it prevents
+  // casual theft of the file from being useful on another machine.
+  private deriveKey(): Buffer {
+    const salt = 'auth-monster-salt-v1';
+    let machineId = '';
+
+    try {
+        // Try to get a stable machine ID
+        const networkInterfaces = os.networkInterfaces();
+        const mac = Object.values(networkInterfaces)
+            .flat()
+            .find(i => i && !i.internal && i.mac !== '00:00:00:00:00:00')
+            ?.mac;
+
+        machineId = mac || os.hostname() + os.userInfo().username;
+    } catch (e) {
+        machineId = 'fallback-id';
+    }
+
+    return crypto.scryptSync(machineId, salt, 32);
+  }
+
+  private encrypt(text: string): string {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-cbc', this.encryptionKey, iv);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return iv.toString('hex') + ':' + encrypted;
+  }
+
+  private decrypt(text: string): string {
+    const textParts = text.split(':');
+    const iv = Buffer.from(textParts.shift()!, 'hex');
+    const encryptedText = textParts.join(':');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', this.encryptionKey, iv);
+    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
   }
 
   async saveSecret(service: string, account: string, secret: string): Promise<void> {
     if (this.useKeychain) {
       try {
-        // macOS Keychain
-        // security add-generic-password -a "account" -s "service" -w "secret" -U
-        // -U updates if exists
         await execAsync(`security add-generic-password -a "${account}" -s "${service}" -w "${secret}" -U`);
         return;
       } catch (e) {
-        console.warn('Failed to save to keychain, falling back to file:', e);
+        console.warn('Failed to save to keychain, falling back to encrypted file:', e);
       }
     }
 
-    // Fallback: Encrypted file (mock encryption for now, or simple obfuscation)
     await this.saveToFile(service, account, secret);
   }
 
   async getSecret(service: string, account: string): Promise<string | null> {
     if (this.useKeychain) {
       try {
-        // security find-generic-password -a "account" -s "service" -w
         const { stdout } = await execAsync(`security find-generic-password -a "${account}" -s "${service}" -w`);
         return stdout.trim();
       } catch (e) {
@@ -55,7 +94,6 @@ export class SecretStorage {
     await this.deleteFromFile(service, account);
   }
 
-  // Simple file-based fallback
   private async saveToFile(service: string, account: string, secret: string) {
     let data: Record<string, string> = {};
     if (fs.existsSync(this.storagePath)) {
@@ -64,7 +102,7 @@ export class SecretStorage {
       } catch(e) {}
     }
     const key = `${service}:${account}`;
-    data[key] = Buffer.from(secret).toString('base64'); // Simple obfuscation
+    data[key] = this.encrypt(secret);
     fs.writeFileSync(this.storagePath, JSON.stringify(data, null, 2), { mode: 0o600 });
   }
 
@@ -74,7 +112,13 @@ export class SecretStorage {
         const data = JSON.parse(fs.readFileSync(this.storagePath, 'utf8'));
         const key = `${service}:${account}`;
         if (data[key]) {
-          return Buffer.from(data[key], 'base64').toString('utf8');
+            try {
+                return this.decrypt(data[key]);
+            } catch (e) {
+                // Return null if decryption fails (e.g. machine ID changed)
+                console.warn(`Failed to decrypt secret for ${account}. Machine ID may have changed.`);
+                return null;
+            }
         }
     } catch (e) {}
     return null;
