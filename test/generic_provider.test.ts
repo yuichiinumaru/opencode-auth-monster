@@ -31,14 +31,14 @@ describe('GenericProvider', () => {
     expect(url).to.equal('http://localhost:11434/v1/chat/completions');
   });
 
-  it('should generate correct headers with apiKey', () => {
+  it('should generate correct headers with apiKey', async () => {
     const accountWithKey = { ...mockAccount, apiKey: 'sk-test-123' };
-    const headers = GenericProvider.getHeaders(accountWithKey);
+    const headers = await GenericProvider.getHeaders(accountWithKey);
     expect(headers['Authorization']).to.equal('Bearer sk-test-123');
     expect(headers['Content-Type']).to.equal('application/json');
   });
 
-  it('should include custom headers from metadata', () => {
+  it('should include custom headers from metadata', async () => {
     const accountCustom = {
         ...mockAccount,
         metadata: {
@@ -46,7 +46,7 @@ describe('GenericProvider', () => {
             headers: { 'X-Custom-Auth': 'secret' }
         }
     };
-    const headers = GenericProvider.getHeaders(accountCustom);
+    const headers = await GenericProvider.getHeaders(accountCustom);
     expect(headers['X-Custom-Auth']).to.equal('secret');
   });
 });

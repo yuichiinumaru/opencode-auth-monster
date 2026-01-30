@@ -1,11 +1,12 @@
 import { ManagedAccount } from '../../core/types';
+import { CookieManager } from '../../integrations/codexbar/cookie-manager';
 
 export class GenericProvider {
   /**
    * Generates headers for Generic OpenAI-compatible providers.
    * Typically expects an API Key in the Authorization header.
    */
-  static getHeaders(account: ManagedAccount): Record<string, string> {
+  static async getHeaders(account: ManagedAccount): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -17,6 +18,16 @@ export class GenericProvider {
     // Add any custom headers from metadata
     if (account.metadata?.headers) {
         Object.assign(headers, account.metadata.headers);
+    }
+
+    // Check for cookie extraction request
+    if (account.metadata?.cookieDomain) {
+        const domain = account.metadata.cookieDomain;
+        const browser = account.metadata.cookieBrowser; // optional
+        const cookieHeader = await CookieManager.getCookiesForDomain(domain, browser);
+        if (cookieHeader) {
+            headers['Cookie'] = cookieHeader;
+        }
     }
 
     return headers;
