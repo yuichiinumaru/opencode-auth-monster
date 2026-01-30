@@ -75,7 +75,8 @@ export class UnifiedModelHub {
     // DeepSeek R1 (Reasoning)
     this.addMapping('deepseek-r1', [
         { provider: AuthProvider.Qwen, modelInProvider: 'deepseek-r1' }, // Qwen provider often proxies DeepSeek
-        { provider: AuthProvider.Windsurf, modelInProvider: 'deepseek-reasoner' }
+        { provider: AuthProvider.Windsurf, modelInProvider: 'deepseek-reasoner' },
+        { provider: AuthProvider.Generic, modelInProvider: 'deepseek-r1' } // Local Ollama fallback
     ]);
 
     // Qwen 3 Coder Plus
@@ -137,7 +138,8 @@ export class UnifiedModelHub {
 
     // DeepSeek: V3.2 Exp
     this.addMapping('deepseek-v3.2-exp', [
-        { provider: AuthProvider.Qwen, modelInProvider: 'deepseek-v3.2-exp' } // Via Qwen Proxy
+        { provider: AuthProvider.Qwen, modelInProvider: 'deepseek-v3.2-exp' }, // Via Qwen Proxy
+        { provider: AuthProvider.Generic, modelInProvider: 'deepseek-v3.2-exp' } // Via Generic/Local
     ]);
 
     // Qwen Models
@@ -162,6 +164,14 @@ export class UnifiedModelHub {
     ]);
     this.addMapping('amazon-q-dev', [
         { provider: AuthProvider.Kiro, modelInProvider: 'amazon-q-developer' }
+    ]);
+
+    // Generic / Llama Models (Default placeholders)
+    this.addMapping('llama-3-8b', [
+        { provider: AuthProvider.Generic, modelInProvider: 'llama3:8b' }
+    ]);
+    this.addMapping('mistral', [
+        { provider: AuthProvider.Generic, modelInProvider: 'mistral' }
     ]);
   }
 
