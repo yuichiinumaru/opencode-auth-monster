@@ -27,6 +27,7 @@ import { MinimaxProvider } from './providers/minimax';
 import { AzureProvider } from './providers/azure';
 import { GrokProvider } from './providers/grok';
 import { DeepSeekProvider } from './providers/deepseek';
+import { GenericProvider } from './providers/generic';
 
 export { RateLimitReason };
 
@@ -348,6 +349,8 @@ export class AuthMonster {
         return GrokProvider.getHeaders(account);
       case AuthProvider.DeepSeek:
         return DeepSeekProvider.getHeaders(account);
+      case AuthProvider.Generic:
+        return GenericProvider.getHeaders(account);
       default:
         // Default header generation fallback
         const headers: Record<string, string> = {};
@@ -418,6 +421,7 @@ export class AuthMonster {
       case AuthProvider.Azure: return AzureProvider.getUrl(model, account);
       case AuthProvider.Grok: return GrokProvider.getUrl(model, account);
       case AuthProvider.DeepSeek: return DeepSeekProvider.getUrl(model, account);
+      case AuthProvider.Generic: return GenericProvider.getUrl(model, account);
       default: return null;
     }
   }
