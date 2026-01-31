@@ -1,126 +1,99 @@
-# SYSTEM KNOWLEDGE GRAPH: OpenCode Auth Monster
+# System Knowledge Graph
+
+**Version:** 1.0.0
+**Last Updated:** 2023-10-27
+**Status:** Active Analysis
 
 ## 1. High-Level Architecture
 
 ```mermaid
 graph TD
-    User([User / IDE]) -->|Request| AuthMonster[AuthMonster Main]
-    User -->|CLI Commands| CLI[CLI Tool]
-    CLI --> AuthMonster
-    CLI --> Dialectics[Dialectics Engine]
+    User([User / IDE Request]) --> AuthMonster[AuthMonster Facade]
 
     subgraph Core Logic
         AuthMonster --> Hub[Unified Model Hub]
         AuthMonster --> Rotator[Account Rotator]
-        AuthMonster --> Quota[Quota Manager]
-        AuthMonster --> Storage[Storage Manager]
-        AuthMonster --> History[History Manager]
-        AuthMonster --> Proxy[Proxy Manager]
-        Dialectics --> AuthMonster
+        Rotator --> Strategy{Load Balance Strategy}
+        Strategy --> Health[Health Score Tracker]
+        Rotator --> Storage[Storage Manager]
+        Storage --> Secrets[Secret Storage]
     end
 
-    subgraph Routing & Selection
-        Hub -->|Map Model| ProviderChoice[Provider Selection]
-        Rotator -->|Filter & Sort| AccountChoice[Account Selection]
-        Quota -->|Check Limits| AccountChoice
-        Rotator -->|Strategy| Strategy{Load Balancing}
-        Strategy -->|Sticky| Sticky[PID Offset]
-        Strategy -->|Round Robin| RR[Cursor]
-        Strategy -->|Hybrid| Hybrid[Score + LRU]
+    subgraph Utilities
+        AuthMonster --> Sanitizer[Cross-Model Sanitizer]
+        AuthMonster --> Extractor[Token Extractor]
     end
 
     subgraph Providers
-        AuthMonster -->|Transform & Fetch| ProviderAdapter[Provider Adapter]
-        ProviderAdapter --> Gemini
-        ProviderAdapter --> Anthropic
-        ProviderAdapter --> Windsurf
-        ProviderAdapter --> Cursor
-        ProviderAdapter --> Others[Other Providers...]
+        AuthMonster --> Gemini[Gemini Provider]
+        AuthMonster --> Anthropic[Anthropic Provider]
+        AuthMonster --> Cursor[Cursor Provider]
+        AuthMonster --> Windsurf[Windsurf Provider]
+        AuthMonster --> Others[Other Providers...]
     end
 
-    subgraph Persistence
-        Storage -->|Secrets| SecretStore[Secret Storage]
-        SecretStore -->|MacOS| Keychain[Keychain]
-        SecretStore -->|Others| File[Obfuscated JSON]
-        History -->|Logs| HistoryFile[history.jsonl]
-    end
+    Extractor -->|Auto-Discovery| Storage
+    Sanitizer -->|Request Transform| AuthMonster
 ```
 
 ## 2. Entity-Relationship Model
 
 ### ManagedAccount
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `id` | string | Unique identifier. |
-| `provider` | AuthProvider | The service provider (e.g., `gemini`, `anthropic`). |
-| `tokens` | OAuthTokens | OAuth access/refresh tokens. |
-| `apiKey` | string | API Key (alternative to OAuth). |
-| `healthScore` | number | Dynamic reliability score (0-100). |
-| `quota` | object | Remaining quota tracking. |
-| `usage` | object | Accumulated cost and token usage. |
-| `metadata` | object | Provider-specific data (e.g., `csrfToken`, `port` for Windsurf). |
+- **ID**: Unique identifier (UUID or generated)
+- **Provider**: Enum (Gemini, Anthropic, Cursor, etc.)
+- **Tokens**: `OAuthTokens` (Access, Refresh, Expiry)
+- **API Key**: Optional string
+- **Health**: `isHealthy`, `healthScore`, `consecutiveFailures`
+- **Quota**: `limit`, `remaining`, `resetTime`
+- **Usage**: `totalInputTokens`, `totalOutputTokens`, `totalCost`
+
+### AuthDetails
+- **Provider**: `AuthProvider`
+- **Account**: `ManagedAccount`
+- **Headers**: Record<string, string> (e.g., Authorization, User-Agent)
+- **ModelInProvider**: String (e.g., 'claude-3-opus-20240229')
 
 ### AuthMonsterConfig
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `active` | AuthProvider | Default active provider. |
-| `fallback` | AuthProvider[] | List of fallback providers. |
-| `method` | AuthMethod | Rotation strategy (`sticky`, `round-robin`, `hybrid`). |
-| `modelPriorities` | Map | Model fallback chains. |
-| `thinking` | object | Settings for reasoning models. |
+- **Active**: Default active provider
+- **Fallback**: Array of fallback providers
+- **Method**: Rotation strategy (`sticky`, `round-robin`, `hybrid`, `quota-optimized`)
+- **Thinking**: Logic for reasoning models
+- **Quota**: Quota management settings
 
 ## 3. Component Registry
 
-| Component | File | Responsibility |
-| :--- | :--- | :--- |
-| **AuthMonster** | `src/index.ts` | Main facade. Orchestrates storage, rotation, and request execution. Handles retries and fallbacks. |
-| **UnifiedModelHub** | `src/core/hub.ts` | Routes generic model names (e.g., `gemini-3-flash`) to specific provider implementations. |
-| **AccountRotator** | `src/core/rotation.ts` | Selects the best account based on health and strategy. Implements rate limit deduplication. |
-| **QuotaManager** | `src/core/quota-manager.ts` | Manages operational quotas, cooldowns, and pre-flight checks. Caches cooldown status. |
-| **DialecticsEngine** | `src/core/dialectics.ts` | Implements "thesis-antithesis-synthesis" by querying two models in parallel and synthesizing the result. |
-| **SecretStorage** | `src/core/secret-storage.ts` | Manages secure storage of credentials using macOS Keychain (via `security` CLI) or obfuscated files. |
-| **StorageManager** | `src/core/storage.ts` | Manages persistence of accounts, using `SecretStorage` for sensitive data. |
-| **ProxyManager** | `src/core/proxy.ts` | Configures and provides HTTP/SOCKS agents for requests. |
-| **HistoryManager** | `src/core/history.ts` | Logs request/response metadata and costs for auditing. |
-| **Providers** | `src/providers/*` | Specialized adapters for each service (Gemini, Anthropic, Windsurf, etc.). |
+| Component | File Path | Responsibility | Dependencies |
+| :--- | :--- | :--- | :--- |
+| **AuthMonster** | `src/index.ts` | Main facade, initializes core components, handles request flow. | Storage, Rotator, Hub, Providers |
+| **CLI** | `src/cli.ts` | Command-line interface for management and testing. | AuthMonster, Commander |
+| **UnifiedModelHub** | `src/core/hub.ts` | Routes generic model names to specific provider/model pairs. | AccountRotator, Types |
+| **AccountRotator** | `src/core/rotation.ts` | Selects accounts based on strategy and health. | HealthScoreTracker, QuotaManager |
+| **StorageManager** | `src/core/storage.ts` | Persists account data to JSON, handles locking. | SecretStorage, proper-lockfile |
+| **SecretStorage** | `src/core/secret-storage.ts` | Encrypts secrets or uses OS Keychain. | child_process (security), crypto |
+| **TokenExtractor** | `src/utils/extractor.ts` | Auto-discovers tokens from local environment. | child_process, fs, sqlite3 |
+| **Sanitizer** | `src/utils/sanitizer.ts` | Cleans requests to prevent cross-model conflicts. | - |
+| **Providers** | `src/providers/*/index.ts` | Adapters for specific AI providers. | Proxy, Types |
 
-## 4. Operational Constraints & Logic
+## 4. Operational Constraints & Rules
 
-### Account Selection
-1.  **Filtration**: Accounts are filtered out if:
-    *   `rateLimitResetTime` is in the future.
-    *   `cooldownUntil` is in the future (managed by `QuotaManager` & `Rotator`).
-    *   `healthScore` < 50.
-    *   Explicitly marked unhealthy.
-2.  **Strategies**:
-    *   **Sticky**: Uses `process.pid % accounts.length` to assign a stable account to the current process.
-    *   **Round-Robin**: Rotates sequentially per request.
-    *   **Hybrid**: Prioritizes Health Score, then Least Recently Used (LRU), with PID offset.
-    *   **Quota-Optimized**: Selects account with highest remaining quota.
+1.  **Rotation Logic:**
+    *   **Sticky:** Pins to one account until limit/failure.
+    *   **Round-Robin:** Cycles through healthy accounts.
+    *   **Hybrid:** Uses Health Score + Usage Metrics.
+    *   **PID Offset:** Initializes cursor based on `process.pid` to avoid collision in parallel instances.
 
-### Error Handling
-*   **Rate Limits (429)**: Triggers temporary backoff. Concurrent 429s within 2s are deduplicated.
-*   **Failures**: Decreases health score.
-*   **Success**: Increases health score and resets consecutive failures.
-*   **Parking**: If all accounts are rate-limited, the system pauses execution (up to 60s) to wait for a reset.
+2.  **Rate Limiting:**
+    *   **Dedup:** Ignores concurrent 429 errors within a 2-second window.
+    *   **Backoff:** Exponential backoff for quota exhaustion, fixed backoff for other errors.
 
-### Special Mechanisms
-*   **Dialectics**: Parallel execution of two models + synthesis step.
-*   **Thinking Warmup**: Sends a dummy request to "wake up" reasoning models (Anthropic) when switching accounts.
-*   **Windsurf gRPC**: Uses a specialized gRPC-over-HTTP implementation via `streamChat` instead of standard fetch.
-*   **Cross-Model Sanitization**: Strips incompatible headers/prompts when switching providers.
+3.  **Security:**
+    *   **Secrets:** Stored in OS Keychain (macOS) or encrypted file (Linux/Windows).
+    *   **Key Derivation:** Uses machine-specific data (MAC/Hostname) for file encryption key. *Security Warning: This is obfuscation, not strong encryption against local root.*
 
-## 5. Data Flow
-1.  **Request**: User calls `request(model, ...)`
-2.  **Resolution**: `UnifiedModelHub` resolves the model chain (primary + fallbacks).
-3.  **Selection**: Loop through chain:
-    *   `QuotaManager.preflightCheck` verifies usability.
-    *   `AccountRotator` picks best account.
-4.  **Execution**:
-    *   `AuthMonster` transforms request (Provider-specific + Sanitization).
-    *   Executes via `proxyFetch` or `WindsurfProvider` (gRPC).
-5.  **Post-Processing**:
-    *   Collect stats (tokens/cost).
-    *   Log to `HistoryManager`.
-    *   Update Health/Quota.
-    *   Handle 429/Errors (Retry/Fallback).
+4.  **Platform Support:**
+    *   **MacOS:** Full support (Keychain, Cursor/Windsurf paths).
+    *   **Linux/Windows:** Limited auto-discovery (File-based secrets).
+
+5.  **Technical Debt:**
+    *   `TokenExtractor` uses `execSync` which blocks the event loop.
+    *   `OpenAI` and `Copilot` providers are defined in types but missing implementation in `src/index.ts`.
