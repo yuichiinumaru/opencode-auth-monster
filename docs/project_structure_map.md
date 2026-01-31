@@ -1,100 +1,69 @@
-.
-./AGENTS.md
-./README.md
-./docs
-./docs/FUTURE_DEVELOPMENT.md
-./docs/analysis_findings.md
-./docs/analyzed_repos.md
-./docs/list.md
-./docs/project_structure_map.md
-./final_round_connectivity.md
-./final_round_integration.md
-./final_round_protocols.md
-./new_repos.txt
-./package-lock.json
-./package.json
-./scripts
-./scripts/analyze-all-repos.sh
-./scripts/analyze-single-category.sh
-./scripts/install.sh
-./scripts/postinstall.js
-./scripts/run-all-analyses.sh
-./scripts/run-category-subagent.sh
-./src
-./src/cli.ts
-./src/core
-./src/core/config.ts
-./src/core/cost-estimator.ts
-./src/core/dialectics.ts
-./src/core/endpoints.ts
-./src/core/history.ts
-./src/core/hub.ts
-./src/core/mcp-bridge.ts
-./src/core/proxy.ts
-./src/core/quota-manager.ts
-./src/core/reasoning.ts
-./src/core/redactor.ts
-./src/core/rotation.ts
-./src/core/secret-storage.ts
-./src/core/storage.ts
-./src/core/thinking-validator.ts
-./src/core/transport.ts
-./src/core/types.ts
-./src/index.ts
-./src/providers
-./src/providers/anthropic
-./src/providers/anthropic/index.ts
-./src/providers/anthropic/transform.ts
-./src/providers/azure
-./src/providers/azure/index.ts
-./src/providers/cursor
-./src/providers/cursor/index.ts
-./src/providers/cursor/proto.ts
-./src/providers/deepseek
-./src/providers/deepseek/index.ts
-./src/providers/gemini
-./src/providers/gemini/index.ts
-./src/providers/grok
-./src/providers/grok/index.ts
-./src/providers/iflow
-./src/providers/iflow/index.ts
-./src/providers/kiro
-./src/providers/kiro/index.ts
-./src/providers/minimax
-./src/providers/minimax/index.ts
-./src/providers/qwen
-./src/providers/qwen/index.ts
-./src/providers/windsurf
-./src/providers/windsurf/auth.ts
-./src/providers/windsurf/discovery.ts
-./src/providers/windsurf/grpc-client.ts
-./src/providers/windsurf/index.ts
-./src/providers/windsurf/models.ts
-./src/providers/windsurf/types.ts
-./src/providers/zhipu
-./src/providers/zhipu/index.ts
-./src/scripts
-./src/scripts/git-hook.ts
-./src/scripts/model-manager.ts
-./src/server
-./src/server/index.ts
-./src/test
-./src/test/basic.test.ts
-./src/test/fallback.test.ts
-./src/test/stability.test.ts
-./src/ui
-./src/ui/dashboard.ts
-./src/utils
-./src/utils/extractor.ts
-./src/utils/github-sync.ts
-./src/utils/oauth-server.ts
-./src/utils/sanitizer.ts
-./src/utils/wizard.ts
-./test
-./test/core.test.js
-./test/integration.test.ts
-./test/test_extractor.ts
-./test/test_guardian.ts
-./test/test_mcp.ts
-./test/test_transport.ts
-./tsconfig.json
+# Project Structure Map
+
+## Root Directory
+- `AGENTS.md`: Workspace Federation Constitution.
+- `README.md`: Project overview and documentation.
+- `package.json`: Dependencies and scripts.
+- `tsconfig.json`: TypeScript configuration.
+- `cli.ts`: CLI entry point.
+- `index.ts`: Library entry point.
+
+## src/
+### core/ (Key Logic)
+- `hub.ts`: Unified Model Hub - Likely the main controller.
+- `rotation.ts`: Account rotation logic (Sticky, Round-robin, etc.).
+- `config.ts`: Configuration management.
+- `storage.ts`: Persistence layer for accounts/state.
+- `transport.ts`: Networking layer.
+- `proxy.ts`: Proxy handling.
+- `quota-manager.ts`: Rate limiting and quota tracking.
+- `cost-estimator.ts`: Usage cost calculation.
+- `mcp-bridge.ts`: Model Context Protocol integration.
+- `dialectics.ts`: Reasoning/logic handling.
+- `history.ts`: Request/Response history.
+- `reasoning.ts`: Advanced model reasoning logic.
+- `redactor.ts`: PII or sensitive data redaction.
+- `secret-storage.ts`: Secure storage for tokens.
+- `thinking-validator.ts`: Validation for "thinking" models.
+- `endpoints.ts`: API endpoint definitions.
+- `types.ts`: Type definitions.
+
+### providers/ (Model Implementations)
+- `anthropic/`: Anthropic specific logic.
+- `azure/`: Azure OpenAI logic.
+- `cursor/`: Cursor IDE token logic.
+- `deepseek/`: Deepseek logic.
+- `gemini/`: Google Gemini logic.
+- `generic/`: Base classes or generic implementations.
+- `grok/`: xAI Grok logic.
+- `iflow/`: iFlow logic.
+- `kiro/`: Kiro logic.
+- `minimax/`: Minimax logic.
+- `qwen/`: Qwen logic.
+- `windsurf/`: Windsurf IDE logic.
+- `zhipu/`: Zhipu AI logic.
+
+### utils/ (Utilities)
+- `oauth-server.ts`: Local server for OAuth callbacks.
+- `wizard.ts`: Interactive setup wizard.
+- `sanitizer.ts`: Request/Header sanitization.
+- `extractor.ts`: Token extraction from local apps (Cursor, Windsurf).
+- `github-sync.ts`: Synchronization with GitHub Secrets.
+
+### server/
+- `index.ts`: Server entry point.
+
+### ui/
+- `dashboard.ts`: CLI Dashboard.
+
+### test/
+- `core.test.js`: Core logic tests.
+- `generic_provider.test.ts`: Provider tests.
+- `integration.test.ts`: Integration tests.
+- `test_extractor.ts`: Extractor tests.
+- `test_guardian.ts`: Guardian tests.
+- `test_mcp.ts`: MCP tests.
+- `test_transport.ts`: Transport tests.
+
+## scripts/
+- Analysis and deployment scripts.

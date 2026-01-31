@@ -1,38 +1,46 @@
-# Codebase Health & Analysis Report
+# Codebase Health Report
 
-**Date:** 2023-10-27
-**Subject:** OpenCode Auth Monster - Deep Architectural Analysis
+> **Date:** Current Session
+> **Scope:** Full Project Analysis
 
-## 1. Architectural Alignment
-The codebase exhibits a high degree of alignment with the documented architecture in `README.md` and `AGENTS.md`.
-- **Core Loop:** The `UnifiedModelHub` -> `AccountRotator` -> `Provider` flow is implemented exactly as described.
-- **Conventions:** `AGENTS.md` conventions (Port 1455, mcp_ prefix, etc.) are strictly enforced in the code (e.g., `src/providers/anthropic/transform.ts`).
-- **Modularity:** Providers are well-isolated in `src/providers/`, sharing a common interface implicitly (though strict TypeScript interface enforcement could be tighter).
+## 1. Executive Summary
+The **OpenCode Auth Monster** codebase is a mature, well-structured TypeScript project with a clear separation of concerns. It implements advanced resilience patterns (Rate Limit Deduplication, Circuit Breaking via Health Scores) that are rare in similar tools. However, there are areas of technical debt, particularly in the Windsurf provider implementation and the hardcoded nature of the Model Hub.
 
-## 2. Key Components Analysis
+## 2. Discrepancy Analysis (Docs vs Code)
 
-### Core Logic
-- **UnifiedModelHub (`src/core/hub.ts`)**: Acts as an effective router. The "Mark VI" models are hardcoded, which might require frequent updates. *Recommendation: Move mappings to an external JSON config.*
-- **AccountRotator (`src/core/rotation.ts`)**: robust implementation of `sticky`, `round-robin`, and `hybrid` strategies. The PID-offset logic is a clever solution for stateless parallelism.
-- **QuotaManager (`src/core/quota-manager.ts`)**: Implements necessary pre-flight checks. However, it relies heavily on local state and explicit `account.quota` updates. It lacks a centralized/shared state store (like Redis), meaning quota awareness is process-local unless persisted to disk frequently.
-
-### Security
-- **SecretStorage (`src/core/secret-storage.ts`)**:
-    - **Strength**: Uses macOS Keychain (`security` CLI) when available.
-    - **Weakness**: Fallback mechanism is a simple JSON file with Base64 obfuscation (`auth-monster-secrets.json`). This is not encryption and offers minimal protection on non-macOS systems (Linux/Windows). *Critical Technical Debt.*
-
-### Resilience
-- **Rate Limit Handling**: The "parking" mechanism (waiting up to 60s) and deduplication of 429 errors are proactive stability features.
-- **Fallbacks**: The `resolveModelChain` logic provides a robust safety net.
-
-## 3. Discrepancies & Technical Debt
-
-| Area | Discrepancy / Debt | Severity | Suggestion |
+| Feature | Documentation (`README.md`) | Code Implementation | Status |
 | :--- | :--- | :--- | :--- |
-| **Windsurf Integration** | `AuthMonster.handleWindsurfRequest` is a special case in the main request loop, bypassing the standard `proxyFetch` pattern. | Medium | Refactor Windsurf into a standard `Provider` that handles its own transport logic internally. |
-| **Proxy Support** | `src/core/proxy.ts` notes complexity with Node's native `fetch` vs. `node-fetch` agents. SOCKS support might be flaky on native `fetch`. | Low | Standardize on `undici` or `node-fetch` explicitly to ensure consistent proxy behavior. |
-| **Model Hardcoding** | `UnifiedModelHub` contains a large list of hardcoded model mappings. | Low | Extract to `models.json` or `config.ts` for easier updates without code changes. |
-| **Tests** | Tests in `src/test/` seem minimal for such a complex routing system. | Medium | Increase unit coverage for `AccountRotator` edge cases. |
+| **Thinking Warmup** | "Automatically 'wakes up' reasoning models... by sending a lightweight background request." | **Verified**. Implemented in `AuthMonster.runThinkingWarmup`. Throttled to 5m, sends "Hello". | ✅ Matches |
+| **Rate Limit Dedup** | "Deduplicating concurrent 429 errors within a 2-second window." | **Verified**. Implemented in `AccountRotator.recordRateLimit`. | ✅ Matches |
+| **PID Offset** | "Uses PID to initialize rotation cursors." | **Verified**. `AccountRotator` constructor uses `process.pid`. | ✅ Matches |
+| **Cross-Model Sanitization** | "Strips conflicting headers and system prompt signatures." | **Verified**. `sanitizeCrossModelRequest` in `utils/sanitizer.ts`. | ✅ Matches |
+| **Windsurf Provider** | "Automated Discovery." | **Partial**. The code requires `port`, `csrfToken`, etc., to be provided (via `extractor.ts` likely), but the *Provider* implementation itself is low-level and brittle. | ⚠️ Complex |
 
-## 4. Conclusion
-The system is well-structured for its purpose: a high-availability, multi-tenant authentication proxy. The core logic is sound, but the persistence layer (secrets) on non-macOS platforms needs immediate attention for a production environment. The "Cognitive Context" is now fully captured in `docs/SYSTEM_KNOWLEDGE_GRAPH.md`.
+## 3. Technical Debt & Risks
+
+### A. Hardcoded Model Hub (`src/core/hub.ts`)
+*   **Issue**: `initializeDefaultMappings` contains hundreds of lines of hardcoded `addMapping` calls.
+*   **Risk**: Adding new models requires code changes and recompilation.
+*   **Recommendation**: Move these mappings to an external JSON/YAML configuration file that can be updated dynamically.
+
+### B. Windsurf Protocol Fragility (`src/core/transport.ts`)
+*   **Issue**: The project manually constructs Protobuf messages using a custom `ProtoWriter` instead of using a generated client or a standard library like `protobufjs`.
+*   **Risk**: Extremely brittle. Any change in the Windsurf gRPC definition will break this integration silently.
+*   **Recommendation**: Generate proper Protobuf clients if possible, or use a robust library.
+
+### C. "Fire-and-Forget" Stats Collection (`src/index.ts`)
+*   **Issue**: The `collectStats` function is called without `await` in `AuthMonster.request`.
+*   **Risk**: In a serverless or CLI environment where the process exits immediately after the response, these stats (and history logs) may be lost.
+*   **Recommendation**: Use `Promise.allSettled` or a background queue with graceful shutdown to ensure stats are flushed.
+
+## 4. Architecture Assessment
+
+The project follows the "Federated Workspace" convention well.
+*   **Core Logic**: Isolated in `src/core`.
+*   **Providers**: Modularized in `src/providers`.
+*   **Configuration**: Centralized.
+
+The **Rotation Logic** is robust, handling edge cases like "Backoff Explosion" which effectively protects user accounts. The **Proxy Support** is also correctly implemented using standard `https-proxy-agent`.
+
+## 5. Conclusion
+The codebase is healthy and production-ready for the supported providers, with the exception of the **Windsurf** integration which should be treated as "Experimental" due to its implementation style.

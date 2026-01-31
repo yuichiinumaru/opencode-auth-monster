@@ -1,126 +1,131 @@
-# SYSTEM KNOWLEDGE GRAPH: OpenCode Auth Monster
+# System Knowledge Graph: OpenCode Auth Monster
+
+> **Version:** 1.0
+> **Last Updated:** Current Session
+> **Status:** ACTIVE
+
+This document serves as the primary cognitive context for the OpenCode Auth Monster codebase. It maps the architecture, data flow, key entities, and operational constraints derived from deep code analysis.
 
 ## 1. High-Level Architecture
 
 ```mermaid
 graph TD
-    User([User / IDE]) -->|Request| AuthMonster[AuthMonster Main]
-    User -->|CLI Commands| CLI[CLI Tool]
-    CLI --> AuthMonster
-    CLI --> Dialectics[Dialectics Engine]
+    User([User / IDE Request]) --> AuthMonster[AuthMonster Entry Point]
+    AuthMonster --> Hub[Unified Model Hub]
 
-    subgraph Core Logic
-        AuthMonster --> Hub[Unified Model Hub]
-        AuthMonster --> Rotator[Account Rotator]
-        AuthMonster --> Quota[Quota Manager]
-        AuthMonster --> Storage[Storage Manager]
-        AuthMonster --> History[History Manager]
-        AuthMonster --> Proxy[Proxy Manager]
-        Dialectics --> AuthMonster
+    subgraph "Routing & Selection"
+        Hub -->|Resolve Model Chain| Config[Config]
+        Hub -->|Get Candidates| Rotator[Account Rotator]
+        Rotator -->|Filter| Health[Health Score Tracker]
+        Rotator -->|Check| Quota[Quota Manager]
+        Rotator -->|Check| RateLimit[Rate Limit Dedup]
     end
 
-    subgraph Routing & Selection
-        Hub -->|Map Model| ProviderChoice[Provider Selection]
-        Rotator -->|Filter & Sort| AccountChoice[Account Selection]
-        Quota -->|Check Limits| AccountChoice
-        Rotator -->|Strategy| Strategy{Load Balancing}
-        Strategy -->|Sticky| Sticky[PID Offset]
-        Strategy -->|Round Robin| RR[Cursor]
-        Strategy -->|Hybrid| Hybrid[Score + LRU]
+    Rotator -->|Selected Account| AuthMonster
+    AuthMonster -->|Warmup (If Reasoning)| Warmup[Thinking Warmup]
+
+    subgraph "Request Execution"
+        AuthMonster -->|Transform| Sanitizer[Cross-Model Sanitizer]
+        AuthMonster -->|Enforce| ThinkingVal[Thinking Validator]
+        AuthMonster -->|Fetch| Transport[Transport Layer]
     end
 
-    subgraph Providers
-        AuthMonster -->|Transform & Fetch| ProviderAdapter[Provider Adapter]
-        ProviderAdapter --> Gemini
-        ProviderAdapter --> Anthropic
-        ProviderAdapter --> Windsurf
-        ProviderAdapter --> Cursor
-        ProviderAdapter --> Others[Other Providers...]
-    end
+    Transport -->|HTTP/SOCKS| Proxy[Proxy Manager]
+    Transport -->|Protobuf/Connect| WindsurfProto[Windsurf ProtoWriter]
 
-    subgraph Persistence
-        Storage -->|Secrets| SecretStore[Secret Storage]
-        SecretStore -->|MacOS| Keychain[Keychain]
-        SecretStore -->|Others| File[Obfuscated JSON]
-        History -->|Logs| HistoryFile[history.jsonl]
-    end
+    Proxy --> ExternalAPI[External Provider APIs]
+    WindsurfProto --> ExternalAPI
+
+    ExternalAPI --> Response
+    Response -->|Async| Stats[Stats & History Collector]
+    Response --> User
 ```
 
-## 2. Entity-Relationship Model
+## 2. Component Registry
 
-### ManagedAccount
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `id` | string | Unique identifier. |
-| `provider` | AuthProvider | The service provider (e.g., `gemini`, `anthropic`). |
-| `tokens` | OAuthTokens | OAuth access/refresh tokens. |
-| `apiKey` | string | API Key (alternative to OAuth). |
-| `healthScore` | number | Dynamic reliability score (0-100). |
-| `quota` | object | Remaining quota tracking. |
-| `usage` | object | Accumulated cost and token usage. |
-| `metadata` | object | Provider-specific data (e.g., `csrfToken`, `port` for Windsurf). |
+| Component | File | Responsibility | Key Logic |
+| :--- | :--- | :--- | :--- |
+| **AuthMonster** | `src/index.ts` | Main library entry, request orchestration. | `request()`, `selectAccount()`, `runThinkingWarmup()` |
+| **UnifiedModelHub** | `src/core/hub.ts` | Routes generic models to provider-specific IDs. | Hardcoded `initializeDefaultMappings`, `selectModelAccount` |
+| **AccountRotator** | `src/core/rotation.ts` | Selects the best account from a list. | Strategies: Sticky, Round-Robin, Hybrid (Score+LRU), PID Offset. |
+| **HealthScoreTracker** | `src/core/rotation.ts` | Tracks account health (0-100). | Passive recovery (+2/hr), Penalties for failure/rate-limit. |
+| **ThinkingValidator** | `src/core/thinking-validator.ts` | Validates/Clamps thinking budgets. | `validateThinking`, maps `low/med/high` to token counts. |
+| **ProxyManager** | `src/core/proxy.ts` | Manages HTTP/SOCKS proxies. | Detects env vars (`HTTPS_PROXY`), creates Agents. |
+| **Sanitizer** | `src/utils/sanitizer.ts` | Cleans requests for cross-model compatibility. | `sanitizeCrossModelRequest` (strips signatures), `applyHeaderSpoofing`. |
+| **ProtoWriter** | `src/core/transport.ts` | Low-level Protobuf writer. | Used by Windsurf provider for manual gRPC/Connect frame construction. |
+| **Providers** | `src/providers/*` | Provider implementations. | `Gemini`, `Anthropic`, `Windsurf`, `Generic` (Ollama), etc. |
 
-### AuthMonsterConfig
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `active` | AuthProvider | Default active provider. |
-| `fallback` | AuthProvider[] | List of fallback providers. |
-| `method` | AuthMethod | Rotation strategy (`sticky`, `round-robin`, `hybrid`). |
-| `modelPriorities` | Map | Model fallback chains. |
-| `thinking` | object | Settings for reasoning models. |
+## 3. Entity-Relationship Model
 
-## 3. Component Registry
+*   **AuthMonster** manages 1 **UnifiedModelHub**.
+*   **AuthMonster** manages 1 **AccountRotator**.
+*   **AuthMonster** manages N **ManagedAccounts**.
+*   **UnifiedModelHub** maps "Generic Model Names" (e.g., `gemini-3-flash`) to N **ModelHubEntries**.
+*   **ModelHubEntry** links a Provider + ModelID.
+*   **AccountRotator** uses **HealthScoreTracker** to filter **ManagedAccounts**.
+*   **ManagedAccount** belongs to 1 **AuthProvider**.
+*   **ManagedAccount** has 0..1 **Quota**.
+*   **ManagedAccount** has 0..1 **HealthScore**.
 
-| Component | File | Responsibility |
-| :--- | :--- | :--- |
-| **AuthMonster** | `src/index.ts` | Main facade. Orchestrates storage, rotation, and request execution. Handles retries and fallbacks. |
-| **UnifiedModelHub** | `src/core/hub.ts` | Routes generic model names (e.g., `gemini-3-flash`) to specific provider implementations. |
-| **AccountRotator** | `src/core/rotation.ts` | Selects the best account based on health and strategy. Implements rate limit deduplication. |
-| **QuotaManager** | `src/core/quota-manager.ts` | Manages operational quotas, cooldowns, and pre-flight checks. Caches cooldown status. |
-| **DialecticsEngine** | `src/core/dialectics.ts` | Implements "thesis-antithesis-synthesis" by querying two models in parallel and synthesizing the result. |
-| **SecretStorage** | `src/core/secret-storage.ts` | Manages secure storage of credentials using macOS Keychain (via `security` CLI) or obfuscated files. |
-| **StorageManager** | `src/core/storage.ts` | Manages persistence of accounts, using `SecretStorage` for sensitive data. |
-| **ProxyManager** | `src/core/proxy.ts` | Configures and provides HTTP/SOCKS agents for requests. |
-| **HistoryManager** | `src/core/history.ts` | Logs request/response metadata and costs for auditing. |
-| **Providers** | `src/providers/*` | Specialized adapters for each service (Gemini, Anthropic, Windsurf, etc.). |
+## 4. Operational Constraints & Rules
 
-## 4. Operational Constraints & Logic
+### A. Request Lifecycle & Rotation
+1.  **Resolution**: Request for `gemini-3-flash` is resolved to a chain of candidates via `Hub`.
+2.  **Selection**: `Rotator` filters accounts:
+    *   **Rate Limited?** Check `rateLimitResetTime`.
+    *   **Cooldown?** Check `cooldownUntil`.
+    *   **Unhealthy?** Score < 50 (`minUsable`).
+    *   **Strategy**: Applies Sticky/Round-Robin/Hybrid.
+    *   **Concurrency**: Uses `process.pid` to offset round-robin cursors (prevents collisions in multi-process setups).
+3.  **Parking**: If *all* accounts are rate-limited, the request "parks" (sleeps) for up to 60s waiting for the earliest reset.
 
-### Account Selection
-1.  **Filtration**: Accounts are filtered out if:
-    *   `rateLimitResetTime` is in the future.
-    *   `cooldownUntil` is in the future (managed by `QuotaManager` & `Rotator`).
-    *   `healthScore` < 50.
-    *   Explicitly marked unhealthy.
-2.  **Strategies**:
-    *   **Sticky**: Uses `process.pid % accounts.length` to assign a stable account to the current process.
-    *   **Round-Robin**: Rotates sequentially per request.
-    *   **Hybrid**: Prioritizes Health Score, then Least Recently Used (LRU), with PID offset.
-    *   **Quota-Optimized**: Selects account with highest remaining quota.
+### B. "Thinking Warmup" Protocol
+*   **Trigger**: When switching to a *new* account that hasn't been used recently.
+*   **Target**: Only `Anthropic` accounts with reasoning models (`opus`, `thinking`).
+*   **Action**: Sends a 1-token dummy request ("Hello") to `api.anthropic.com`.
+*   **Throttle**: Max once every 5 minutes per account.
+*   **Mode**: Fire-and-forget (does not block the main user request).
 
-### Error Handling
-*   **Rate Limits (429)**: Triggers temporary backoff. Concurrent 429s within 2s are deduplicated.
-*   **Failures**: Decreases health score.
-*   **Success**: Increases health score and resets consecutive failures.
-*   **Parking**: If all accounts are rate-limited, the system pauses execution (up to 60s) to wait for a reset.
+### C. Cross-Model Sanitization
+*   **Problem**: Switching from Gemini (which uses `thoughtSignature`) to Anthropic causes 400 Bad Request if unknown fields are present.
+*   **Solution**: `sanitizeCrossModelRequest` recursively strips:
+    *   `thoughtSignature`
+    *   `thinkingMetadata`
+    *   `signature`
+    *   `thought_signature`
 
-### Special Mechanisms
-*   **Dialectics**: Parallel execution of two models + synthesis step.
-*   **Thinking Warmup**: Sends a dummy request to "wake up" reasoning models (Anthropic) when switching accounts.
-*   **Windsurf gRPC**: Uses a specialized gRPC-over-HTTP implementation via `streamChat` instead of standard fetch.
-*   **Cross-Model Sanitization**: Strips incompatible headers/prompts when switching providers.
+### D. Rate Limit Deduplication
+*   **Problem**: Parallel requests hitting 429 simultaneously cause "Backoff Explosion" (health score tanking).
+*   **Solution**: If a 429 is recorded, any subsequent 429s for the same account within **2 seconds** are ignored (deduplicated).
 
-## 5. Data Flow
-1.  **Request**: User calls `request(model, ...)`
-2.  **Resolution**: `UnifiedModelHub` resolves the model chain (primary + fallbacks).
-3.  **Selection**: Loop through chain:
-    *   `QuotaManager.preflightCheck` verifies usability.
-    *   `AccountRotator` picks best account.
-4.  **Execution**:
-    *   `AuthMonster` transforms request (Provider-specific + Sanitization).
-    *   Executes via `proxyFetch` or `WindsurfProvider` (gRPC).
-5.  **Post-Processing**:
-    *   Collect stats (tokens/cost).
-    *   Log to `HistoryManager`.
-    *   Update Health/Quota.
-    *   Handle 429/Errors (Retry/Fallback).
+### E. Windsurf Provider Specifics
+*   **Protocol**: Uses gRPC-over-HTTP (Connect protocol).
+*   **Implementation**: Does NOT use a standard gRPC library. Uses `src/core/transport.ts` to manually write Protobuf Varints and length-delimited frames.
+*   **Complexity**: High. Requires `port`, `csrfToken`, and `version` in account metadata.
+
+## 5. Data Flow: Request Execution
+
+1.  **Input**: `model`, `url`, `options`.
+2.  **Hub**: Resolves `model` -> `[Candidate Models]`.
+3.  **Loop**: For each candidate:
+    *   `selectAccount()` -> Returns `AuthDetails`.
+    *   **If None**: Check for rate-limit parking. If parked, wait and retry. Else, continue.
+    *   **Transform**: `JSON.stringify` body -> `sanitize` -> `enforceReasoning`.
+    *   **Execute**:
+        *   If `Windsurf`: Call `handleWindsurfRequest` (Stream/Protobuf).
+        *   Else: Call `proxyFetch` (HTTP/SOCKS).
+    *   **Stats (Async)**:
+        *   Clone response.
+        *   Estimate/Extract tokens.
+        *   Calculate Cost (`CostEstimator`).
+        *   Update `account.usage`.
+        *   Write to `HistoryManager`.
+    *   **Error Handling**:
+        *   429/403 (Quota): Report Rate Limit -> Retry next candidate.
+        *   Other Error: Report Failure -> Retry next candidate.
+        *   Success: Report Success -> Return Response.
+
+## 6. Known Limitations (from Code Analysis)
+*   **Hardcoded Mappings**: `Hub` mappings are hardcoded in TS, not loaded from dynamic config.
+*   **Windsurf Fragility**: Manual Protobuf encoding is brittle to protocol changes.
+*   **Stats Reliability**: Stats collection is "fire-and-forget" and may be lost if the process terminates immediately after response.
