@@ -1,7 +1,7 @@
-import { 
-  AuthProvider, 
-  AuthMonsterConfig, 
-  ManagedAccount, 
+import {
+  AuthProvider,
+  AuthMonsterConfig,
+  ManagedAccount,
   AuthDetails,
   PluginContext
 } from './core/types';
@@ -55,15 +55,15 @@ export class AuthMonster {
 
   async getAuthDetails(modelOrProvider?: string | AuthProvider): Promise<AuthDetails | null> {
     // 1. Try routing via Unified Model Hub if it looks like a model name
-    if (modelOrProvider && typeof modelOrProvider === 'string' && 
-        !Object.values(AuthProvider).includes(modelOrProvider as AuthProvider)) {
-      
+    if (modelOrProvider && typeof modelOrProvider === 'string' &&
+      !Object.values(AuthProvider).includes(modelOrProvider as AuthProvider)) {
+
       const modelChain = this.hub.resolveModelChain(modelOrProvider, this.config);
-      
+
       for (const modelName of modelChain) {
         const hubChoice = this.hub.selectModelAccount(modelName, this.accounts);
         if (hubChoice) {
-          const details = this.selectAccount(hubChoice.provider, [hubChoice.account], hubChoice.modelInProvider);
+          const details = await this.selectAccount(hubChoice.provider, [hubChoice.account], hubChoice.modelInProvider);
           if (details) return details;
         }
       }
@@ -78,31 +78,31 @@ export class AuthMonster {
       for (const fallbackProvider of this.config.fallback) {
         const fallbackAccounts = this.accounts.filter(a => a.provider === fallbackProvider);
         if (fallbackAccounts.length > 0) {
-          return this.selectAccount(fallbackProvider, fallbackAccounts);
+          return await this.selectAccount(fallbackProvider, fallbackAccounts);
         }
       }
       return null;
     }
 
-    return this.selectAccount(targetProvider, providerAccounts);
+    return await this.selectAccount(targetProvider, providerAccounts);
   }
 
-  private selectAccount(provider: AuthProvider, accounts: ManagedAccount[], modelInProvider?: string): AuthDetails | null {
+  private async selectAccount(provider: AuthProvider, accounts: ManagedAccount[], modelInProvider?: string): Promise<AuthDetails | null> {
     const account = this.rotator.selectAccount(accounts, this.config.method);
-    
+
     if (!account) {
       return null;
     }
 
     // Thinking Warmup: Triggered when switching to a new account
     if (this.lastUsedAccountId !== account.id) {
-      this.runThinkingWarmup(account.id).catch(err => 
+      this.runThinkingWarmup(account.id).catch(err =>
         console.error(`[AuthMonster] Warmup background task failed for ${account.email}:`, err)
       );
       this.lastUsedAccountId = account.id;
     }
-    
-    const headers = this.getHeadersForAccount(provider, account);
+
+    const headers = await this.getHeadersForAccount(provider, account);
 
     return {
       provider,
@@ -129,15 +129,15 @@ export class AuthMonster {
         // If no usable accounts found, check if any are just rate-limited and wait
         const accountsWithReset = this.accounts.filter(a => a.rateLimitResetTime && a.rateLimitResetTime > Date.now());
         if (accountsWithReset.length > 0) {
-            const earliestReset = Math.min(...accountsWithReset.map(a => a.rateLimitResetTime!));
-            const waitTime = earliestReset - Date.now();
+          const earliestReset = Math.min(...accountsWithReset.map(a => a.rateLimitResetTime!));
+          const waitTime = earliestReset - Date.now();
 
-            // Only park if the wait is reasonable (< 60s)
-            if (waitTime > 0 && waitTime < 60000) {
-                console.log(`[AuthMonster] All accounts busy. Parking request for ${Math.ceil(waitTime / 1000)}s...`);
-                await new Promise(resolve => setTimeout(resolve, waitTime + 100)); // Wait + buffer
-                auth = await this.getAuthDetails(currentModel);
-            }
+          // Only park if the wait is reasonable (< 60s)
+          if (waitTime > 0 && waitTime < 60000) {
+            console.log(`[AuthMonster] All accounts busy. Parking request for ${Math.ceil(waitTime / 1000)}s...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime + 100)); // Wait + buffer
+            auth = await this.getAuthDetails(currentModel);
+          }
         }
       }
 
@@ -159,68 +159,68 @@ export class AuthMonster {
         let response: Response;
 
         if (auth.provider === AuthProvider.Windsurf) {
-           response = await this.handleWindsurfRequest(auth, options);
+          response = await this.handleWindsurfRequest(auth, options);
         } else {
-           response = await proxyFetch(targetUrl, {
-             ...options,
-             headers,
-             body: requestBody
-           });
+          response = await proxyFetch(targetUrl, {
+            ...options,
+            headers,
+            body: requestBody
+          });
         }
 
         // --- Stats & History Collection (Phase 3) ---
         const collectStats = async () => {
-             // console.log("[AuthMonster] Collecting stats...");
-             const durationMs = Date.now() - startTime;
-             const responseClone = response.clone();
-             let responseBody: any;
-             let inputTokens = 0;
-             let outputTokens = 0;
+          // console.log("[AuthMonster] Collecting stats...");
+          const durationMs = Date.now() - startTime;
+          const responseClone = response.clone();
+          let responseBody: any;
+          let inputTokens = 0;
+          let outputTokens = 0;
 
-             try {
-                 const text = await responseClone.text();
-                 try { responseBody = JSON.parse(text); } catch { responseBody = text; }
-             } catch {}
+          try {
+            const text = await responseClone.text();
+            try { responseBody = JSON.parse(text); } catch { responseBody = text; }
+          } catch { }
 
-             // Extract tokens
-             if (responseBody && typeof responseBody === 'object' && responseBody.usage) {
-                 inputTokens = responseBody.usage.prompt_tokens || responseBody.usage.input_tokens || 0;
-                 outputTokens = responseBody.usage.completion_tokens || responseBody.usage.output_tokens || 0;
-             }
+          // Extract tokens
+          if (responseBody && typeof responseBody === 'object' && responseBody.usage) {
+            inputTokens = responseBody.usage.prompt_tokens || responseBody.usage.input_tokens || 0;
+            outputTokens = responseBody.usage.completion_tokens || responseBody.usage.output_tokens || 0;
+          }
 
-             // Estimate tokens if missing
-             if (inputTokens === 0 && typeof requestBody === 'string') inputTokens = CostEstimator.estimateTokens(requestBody);
-             if (outputTokens === 0) {
-                 if (typeof responseBody === 'string') outputTokens = CostEstimator.estimateTokens(responseBody);
-                 else if (responseBody?.choices?.[0]?.message?.content) outputTokens = CostEstimator.estimateTokens(responseBody.choices[0].message.content);
-             }
+          // Estimate tokens if missing
+          if (inputTokens === 0 && typeof requestBody === 'string') inputTokens = CostEstimator.estimateTokens(requestBody);
+          if (outputTokens === 0) {
+            if (typeof responseBody === 'string') outputTokens = CostEstimator.estimateTokens(responseBody);
+            else if (responseBody?.choices?.[0]?.message?.content) outputTokens = CostEstimator.estimateTokens(responseBody.choices[0].message.content);
+          }
 
-             const cost = CostEstimator.calculateCost(auth!.modelInProvider || currentModel, inputTokens, outputTokens);
+          const cost = CostEstimator.calculateCost(auth!.modelInProvider || currentModel, inputTokens, outputTokens);
 
-             // Update Usage
-             if (!auth!.account.usage) auth!.account.usage = { totalInputTokens: 0, totalOutputTokens: 0, totalCost: 0 };
-             auth!.account.usage.totalInputTokens += inputTokens;
-             auth!.account.usage.totalOutputTokens += outputTokens;
-             auth!.account.usage.totalCost += cost;
+          // Update Usage
+          if (!auth!.account.usage) auth!.account.usage = { totalInputTokens: 0, totalOutputTokens: 0, totalCost: 0 };
+          auth!.account.usage.totalInputTokens += inputTokens;
+          auth!.account.usage.totalOutputTokens += outputTokens;
+          auth!.account.usage.totalCost += cost;
 
-             // Log to History
-             let parsedRequest = requestBody;
-             if (typeof requestBody === 'string') {
-                 try { parsedRequest = JSON.parse(requestBody); } catch {}
-             }
+          // Log to History
+          let parsedRequest = requestBody;
+          if (typeof requestBody === 'string') {
+            try { parsedRequest = JSON.parse(requestBody); } catch { }
+          }
 
-             await this.history.addEntry({
-                 model: currentModel,
-                 provider: auth!.provider,
-                 accountId: auth!.account.id,
-                 tokens: { input: inputTokens, output: outputTokens },
-                 cost,
-                 request: parsedRequest,
-                 response: responseBody,
-                 durationMs,
-                 success: response.ok,
-                 error: !response.ok ? `Status ${response.status}` : undefined
-             });
+          await this.history.addEntry({
+            model: currentModel,
+            provider: auth!.provider,
+            accountId: auth!.account.id,
+            tokens: { input: inputTokens, output: outputTokens },
+            cost,
+            request: parsedRequest,
+            response: responseBody,
+            durationMs,
+            success: response.ok,
+            error: !response.ok ? `Status ${response.status}` : undefined
+          });
         };
 
         // Don't await stats collection to avoid blocking the response return (fire and forget)
@@ -250,15 +250,15 @@ export class AuthMonster {
 
         // Log failure to history
         this.history.addEntry({
-            model: currentModel,
-            provider: auth.provider,
-            accountId: auth.account.id,
-            request: requestBody,
-            response: null,
-            durationMs: Date.now() - startTime,
-            success: false,
-            error: String(error)
-        }).catch(() => {});
+          model: currentModel,
+          provider: auth.provider,
+          accountId: auth.account.id,
+          request: requestBody,
+          response: null,
+          durationMs: Date.now() - startTime,
+          success: false,
+          error: String(error)
+        }).catch(() => { });
 
         await this.reportFailure(auth.account.id);
         lastError = error;
@@ -283,16 +283,16 @@ export class AuthMonster {
     const lastWarmup = this.lastWarmupTime.get(accountId) ?? 0;
     if (Date.now() - lastWarmup < 5 * 60 * 1000) return;
 
-    const isReasoningModel = account.metadata?.model?.includes('opus') || 
-                            account.metadata?.model?.includes('thinking') ||
-                            !account.metadata?.model; // Assume reasoning if model unknown for Anthropic
+    const isReasoningModel = account.metadata?.model?.includes('opus') ||
+      account.metadata?.model?.includes('thinking') ||
+      !account.metadata?.model; // Assume reasoning if model unknown for Anthropic
 
     if (!isReasoningModel) return;
 
     try {
-      const headers = this.getHeadersForAccount(account.provider, account);
-      const url = account.apiKey 
-        ? "https://api.anthropic.com/v1/messages" 
+      const headers = await this.getHeadersForAccount(account.provider, account);
+      const url = account.apiKey
+        ? "https://api.anthropic.com/v1/messages"
         : "https://console.anthropic.com/api/v1/messages";
 
       const body: any = {
@@ -323,7 +323,7 @@ export class AuthMonster {
   /**
    * Generates headers using provider-specific logic
    */
-  private getHeadersForAccount(provider: AuthProvider, account: ManagedAccount): Record<string, string> {
+  private async getHeadersForAccount(provider: AuthProvider, account: ManagedAccount): Promise<Record<string, string>> {
     switch (provider) {
       case AuthProvider.Gemini:
         return GeminiProvider.getHeaders(account);
@@ -350,7 +350,7 @@ export class AuthMonster {
       case AuthProvider.DeepSeek:
         return DeepSeekProvider.getHeaders(account);
       case AuthProvider.Generic:
-        return GenericProvider.getHeaders(account);
+        return await GenericProvider.getHeaders(account);
       default:
         // Default header generation fallback
         const headers: Record<string, string> = {};
@@ -372,7 +372,7 @@ export class AuthMonster {
 
     // 1.5. Reasoning Enforcer
     if (this.config.thinking?.enabled) {
-       sanitizedBody = enforceReasoning(sanitizedBody, modelInProvider);
+      sanitizedBody = enforceReasoning(sanitizedBody, modelInProvider);
     }
 
     // 2. Inject hub-selected model if present
@@ -405,11 +405,11 @@ export class AuthMonster {
 
   private getRequestUrl(provider: AuthProvider, model: string, account: ManagedAccount): string | null {
     if (provider === AuthProvider.Generic ||
-       (this.config.providers && this.config.providers[provider]?.options?.baseUrl)) {
-         const baseUrl = this.config.providers[provider]?.options?.baseUrl;
-         if (baseUrl) {
-             return `${baseUrl.replace(/\/$/, '')}/chat/completions`;
-         }
+      (this.config.providers && this.config.providers[provider]?.options?.baseUrl)) {
+      const baseUrl = this.config.providers[provider]?.options?.baseUrl;
+      if (baseUrl) {
+        return `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+      }
     }
 
     switch (provider) {
@@ -427,41 +427,41 @@ export class AuthMonster {
   }
 
   private async handleWindsurfRequest(auth: AuthDetails, options: any): Promise<Response> {
-       let messages: any[] = [];
-       let model = auth.modelInProvider || 'default';
-       try {
-          const bodyObj = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
-          if (bodyObj) {
-            messages = bodyObj.messages || [];
-            if (bodyObj.model) model = bodyObj.model;
-          }
-       } catch (e) {}
+    let messages: any[] = [];
+    let model = auth.modelInProvider || 'default';
+    try {
+      const bodyObj = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+      if (bodyObj) {
+        messages = bodyObj.messages || [];
+        if (bodyObj.model) model = bodyObj.model;
+      }
+    } catch (e) { }
 
-       const credentials = {
-          apiKey: auth.account.apiKey || auth.account.tokens.accessToken,
-          port: auth.account.metadata?.port,
-          csrfToken: auth.account.metadata?.csrfToken,
-          version: auth.account.metadata?.version
-       };
+    const credentials = {
+      apiKey: auth.account.apiKey || auth.account.tokens.accessToken,
+      port: auth.account.metadata?.port,
+      csrfToken: auth.account.metadata?.csrfToken,
+      version: auth.account.metadata?.version
+    };
 
-       if (!credentials.apiKey || !credentials.port || !credentials.csrfToken) {
-           throw new Error("Missing Windsurf credentials (port, csrfToken, or apiKey)");
-       }
+    if (!credentials.apiKey || !credentials.port || !credentials.csrfToken) {
+      throw new Error("Missing Windsurf credentials (port, csrfToken, or apiKey)");
+    }
 
-       const text = await streamChat(credentials as any, { model, messages });
+    const text = await streamChat(credentials as any, { model, messages });
 
-       return new Response(JSON.stringify({
-           id: 'chatcmpl-' + Date.now(),
-           object: 'chat.completion',
-           created: Math.floor(Date.now() / 1000),
-           model: model,
-           choices: [{
-               index: 0,
-               message: { role: 'assistant', content: text },
-               finish_reason: 'stop'
-           }],
-           usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({
+      id: 'chatcmpl-' + Date.now(),
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model: model,
+      choices: [{
+        index: 0,
+        message: { role: 'assistant', content: text },
+        finish_reason: 'stop'
+      }],
+      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
 
   /**
