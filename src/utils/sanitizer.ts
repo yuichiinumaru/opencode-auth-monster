@@ -1,7 +1,70 @@
+const SCHEMA_FIELDS_TO_STRIP = [
+  'const',
+  '$ref',
+  '$defs',
+  'default',
+  'examples',
+  'additionalProperties',
+  '$schema',
+  'title'
+];
+
+function isThinkingBlock(block: any): boolean {
+  if (!block || typeof block !== 'object') return false;
+  const type = String(block.type || '').toLowerCase();
+  return block.thought === true || ['thinking', 'reasoning', 'thought'].includes(type);
+}
+
+export function cleanJsonSchemaForProvider(schema: any): any {
+  if (!schema || typeof schema !== 'object') return schema;
+
+  if (Array.isArray(schema)) {
+    return schema.map(cleanJsonSchemaForProvider);
+  }
+
+  const cleaned: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(schema)) {
+    if (SCHEMA_FIELDS_TO_STRIP.includes(key)) {
+      continue;
+    }
+
+    if (key === 'const') {
+      cleaned.enum = [value];
+      continue;
+    }
+
+    if (key === 'properties' && value && typeof value === 'object') {
+      const nextProps: Record<string, any> = {};
+      for (const [propKey, propValue] of Object.entries(value)) {
+        nextProps[propKey] = cleanJsonSchemaForProvider(propValue);
+      }
+      cleaned.properties = nextProps;
+      continue;
+    }
+
+    cleaned[key] = cleanJsonSchemaForProvider(value);
+  }
+
+  if (cleaned.type === 'object') {
+    const props = cleaned.properties ?? {};
+    if (Object.keys(props).length === 0) {
+      cleaned.properties = {
+        reason: {
+          type: 'string',
+          description: 'Placeholder field required by provider schema validation.'
+        }
+      };
+    }
+  }
+
+  return cleaned;
+}
+
 /**
  * Sanitizes the request body to remove model-specific fields that might cause
  * conflicts when rotating between different model families.
- * 
+ *
  * This prevents 'Invalid signature' errors when rotating from Gemini (which adds signatures)
  * to Anthropic/OpenAI (which don't expect them).
  */
@@ -43,18 +106,20 @@ export function sanitizeCrossModelRequest(body: any): any {
         
         // Also check inside content if it's an array (Anthropic style)
         if (Array.isArray(newMsg.content)) {
-          newMsg.content = newMsg.content.map((block: any) => {
-            if (typeof block === 'object' && block !== null) {
-              const newBlock = { ...block };
-              for (const field of fieldsToStrip) {
-                if (field in newBlock) {
-                  delete newBlock[field];
+          newMsg.content = newMsg.content
+            .filter((block: any) => !isThinkingBlock(block))
+            .map((block: any) => {
+              if (typeof block === 'object' && block !== null) {
+                const newBlock = { ...block };
+                for (const field of fieldsToStrip) {
+                  if (field in newBlock) {
+                    delete newBlock[field];
+                  }
                 }
+                return newBlock;
               }
-              return newBlock;
-            }
-            return block;
-          });
+              return block;
+            });
         }
         
         return newMsg;

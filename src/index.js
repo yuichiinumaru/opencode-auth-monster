@@ -1,12 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthMonster = void 0;
-exports.createAuthMonster = createAuthMonster;
 const types_1 = require("./core/types");
 const storage_1 = require("./core/storage");
 const rotation_1 = require("./core/rotation");
 const hub_1 = require("./core/hub");
 const sanitizer_1 = require("./utils/sanitizer");
+const tool_recovery_1 = require("./utils/tool-recovery");
+const thinking_cache_1 = require("./utils/thinking-cache");
 const proxy_1 = require("./core/proxy");
 // Import Providers
 const gemini_1 = require("./providers/gemini");
@@ -14,6 +15,9 @@ const anthropic_1 = require("./providers/anthropic");
 const cursor_1 = require("./providers/cursor");
 const windsurf_1 = require("./providers/windsurf");
 class AuthMonster {
+    getSessionKey(provider, accountId, model) {
+        return `${provider}:${accountId}:${model ?? 'default'}`;
+    }
     constructor(context) {
         this.accounts = [];
         this.lastUsedAccountId = null;
@@ -86,13 +90,14 @@ class AuthMonster {
             if (!auth)
                 continue;
             try {
+                let attemptedRecovery = false;
                 const headers = { ...options.headers, ...auth.headers };
                 let body = options.body;
                 // Transform body if it's an object (AI request)
                 if (body && typeof body === 'object' && !(body instanceof FormData) && !(body instanceof Blob)) {
                     body = JSON.stringify(this.transformRequest(auth.provider, body, auth.modelInProvider));
                 }
-                const response = await (0, proxy_1.proxyFetch)(url, {
+                let response = await (0, proxy_1.proxyFetch)(url, {
                     ...options,
                     headers,
                     body
@@ -107,6 +112,21 @@ class AuthMonster {
                 }
                 if (!response.ok) {
                     const errorText = await response.clone().text().catch(() => 'Unknown error');
+                    if (!attemptedRecovery && auth.provider === types_1.AuthProvider.Anthropic && this.isToolResultMissingError(errorText)) {
+                        const recoveredBody = this.recoverToolResultsFromBody(body);
+                        if (recoveredBody) {
+                            attemptedRecovery = true;
+                            response = await (0, proxy_1.proxyFetch)(url, {
+                                ...options,
+                                headers,
+                                body: recoveredBody
+                            });
+                        }
+                    }
+                    if (response.ok && auth.provider === types_1.AuthProvider.Anthropic) {
+                        this.cacheThinkingFromResponse(response, auth, model);
+                        return response;
+                    }
                     console.warn(`[AuthMonster] Request failed for ${auth.account.email} (${auth.provider}): ${response.status} ${errorText}`);
                     // For non-quota errors, we might still want to report failure but maybe not fallback?
                     // Actually, let's report failure and see if we should continue.
@@ -117,6 +137,9 @@ class AuthMonster {
                 }
                 else {
                     await this.reportSuccess(auth.account.id);
+                    if (auth.provider === types_1.AuthProvider.Anthropic) {
+                        this.cacheThinkingFromResponse(response, auth, model);
+                    }
                 }
                 return response;
             }
@@ -212,13 +235,60 @@ class AuthMonster {
         }
         // 3. Provider-specific transformations
         switch (provider) {
-            case types_1.AuthProvider.Anthropic:
+            case types_1.AuthProvider.Anthropic: {
+                if (sanitizedBody.messages && Array.isArray(sanitizedBody.messages)) {
+                    const sessionKey = this.getSessionKey(provider, sanitizedBody.accountId ?? 'unknown', modelInProvider ?? sanitizedBody.model);
+                    const recoveredMessages = (0, tool_recovery_1.appendSyntheticToolResults)(sanitizedBody.messages);
+                    if (recoveredMessages) {
+                        sanitizedBody.messages = recoveredMessages;
+                    }
+                    (0, thinking_cache_1.injectCachedThinking)(sanitizedBody.messages, sessionKey);
+                }
                 return (0, anthropic_1.transformRequest)(sanitizedBody);
+            }
             case types_1.AuthProvider.Gemini:
                 return gemini_1.GeminiProvider.transformRequest(sanitizedBody);
             default:
                 return sanitizedBody;
         }
+    }
+    isToolResultMissingError(errorText) {
+        const normalized = errorText.toLowerCase();
+        return normalized.includes('tool_result') && normalized.includes('tool_use');
+    }
+    recoverToolResultsFromBody(body) {
+        if (!body)
+            return null;
+        let parsedBody = body;
+        if (typeof body === 'string') {
+            try {
+                parsedBody = JSON.parse(body);
+            }
+            catch {
+                return null;
+            }
+        }
+        if (!parsedBody || !Array.isArray(parsedBody.messages)) {
+            return null;
+        }
+        const recoveredMessages = (0, tool_recovery_1.appendSyntheticToolResults)(parsedBody.messages);
+        if (!recoveredMessages || recoveredMessages === parsedBody.messages) {
+            return null;
+        }
+        const recoveredBody = { ...parsedBody, messages: recoveredMessages };
+        return JSON.stringify(recoveredBody);
+    }
+    cacheThinkingFromResponse(response, auth, modelName) {
+        const sessionKey = this.getSessionKey(auth.provider, auth.account.id, modelName ?? auth.modelInProvider);
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            return;
+        }
+        response
+            .clone()
+            .json()
+            .then(payload => (0, thinking_cache_1.cacheThinkingFromResponse)(payload, sessionKey))
+            .catch(() => undefined);
     }
     /**
      * Provider-specific response transformations
@@ -284,8 +354,8 @@ class AuthMonster {
         }
     }
 }
-exports.AuthMonster = AuthMonster;
-// Example usage/factory
-function createAuthMonster(context) {
+function authMonsterPlugin(context) {
     return new AuthMonster(context);
 }
+module.exports = authMonsterPlugin;
+module.exports.default = authMonsterPlugin;

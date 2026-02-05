@@ -9,6 +9,8 @@ import { StorageManager } from './core/storage';
 import { AccountRotator, RateLimitReason } from './core/rotation';
 import { UnifiedModelHub } from './core/hub';
 import { sanitizeCrossModelRequest } from './utils/sanitizer';
+import { appendSyntheticToolResults } from './utils/tool-recovery';
+import { cacheThinkingFromResponse, injectCachedThinking } from './utils/thinking-cache';
 import { proxyFetch } from './core/proxy';
 
 // Import Providers
@@ -27,6 +29,10 @@ export class AuthMonster {
   private hub: UnifiedModelHub;
   private lastUsedAccountId: string | null = null;
   private lastWarmupTime: Map<string, number> = new Map();
+
+  private getSessionKey(provider: AuthProvider, accountId: string, model?: string) {
+    return `${provider}:${accountId}:${model ?? 'default'}`;
+  }
 
   constructor(context: PluginContext) {
     this.config = context.config;
@@ -112,6 +118,7 @@ export class AuthMonster {
       if (!auth) continue;
 
       try {
+        let attemptedRecovery = false;
         const headers = { ...options.headers, ...auth.headers };
         let body = options.body;
 
@@ -120,7 +127,7 @@ export class AuthMonster {
           body = JSON.stringify(this.transformRequest(auth.provider, body, auth.modelInProvider));
         }
 
-        const response = await proxyFetch(url, {
+        let response = await proxyFetch(url, {
           ...options,
           headers,
           body
@@ -137,6 +144,23 @@ export class AuthMonster {
 
         if (!response.ok) {
           const errorText = await response.clone().text().catch(() => 'Unknown error');
+          if (!attemptedRecovery && auth.provider === AuthProvider.Anthropic && this.isToolResultMissingError(errorText)) {
+            const recoveredBody = this.recoverToolResultsFromBody(body);
+            if (recoveredBody) {
+              attemptedRecovery = true;
+              response = await proxyFetch(url, {
+                ...options,
+                headers,
+                body: recoveredBody
+              });
+            }
+          }
+
+          if (response.ok && auth.provider === AuthProvider.Anthropic) {
+            this.cacheThinkingFromResponse(response, auth, model);
+            return response;
+          }
+
           console.warn(`[AuthMonster] Request failed for ${auth.account.email} (${auth.provider}): ${response.status} ${errorText}`);
           // For non-quota errors, we might still want to report failure but maybe not fallback?
           // Actually, let's report failure and see if we should continue.
@@ -145,6 +169,9 @@ export class AuthMonster {
           if (response.status >= 500) continue;
         } else {
           await this.reportSuccess(auth.account.id);
+          if (auth.provider === AuthProvider.Anthropic) {
+            this.cacheThinkingFromResponse(response, auth, model);
+          }
         }
 
         return response;
@@ -249,13 +276,66 @@ export class AuthMonster {
 
     // 3. Provider-specific transformations
     switch (provider) {
-      case AuthProvider.Anthropic:
+      case AuthProvider.Anthropic: {
+        if (sanitizedBody.messages && Array.isArray(sanitizedBody.messages)) {
+          const sessionKey = this.getSessionKey(provider, sanitizedBody.accountId ?? 'unknown', modelInProvider ?? sanitizedBody.model);
+          const recoveredMessages = appendSyntheticToolResults(sanitizedBody.messages);
+          if (recoveredMessages) {
+            sanitizedBody.messages = recoveredMessages;
+          }
+          injectCachedThinking(sanitizedBody.messages, sessionKey);
+        }
         return anthropicTransformRequest(sanitizedBody);
+      }
       case AuthProvider.Gemini:
         return GeminiProvider.transformRequest(sanitizedBody);
       default:
         return sanitizedBody;
     }
+  }
+
+  private isToolResultMissingError(errorText: string): boolean {
+    const normalized = errorText.toLowerCase();
+    return normalized.includes('tool_result') && normalized.includes('tool_use');
+  }
+
+  private recoverToolResultsFromBody(body: any): string | null {
+    if (!body) return null;
+
+    let parsedBody: any = body;
+    if (typeof body === 'string') {
+      try {
+        parsedBody = JSON.parse(body);
+      } catch {
+        return null;
+      }
+    }
+
+    if (!parsedBody || !Array.isArray(parsedBody.messages)) {
+      return null;
+    }
+
+    const recoveredMessages = appendSyntheticToolResults(parsedBody.messages);
+    if (!recoveredMessages || recoveredMessages === parsedBody.messages) {
+      return null;
+    }
+
+    const recoveredBody = { ...parsedBody, messages: recoveredMessages };
+    return JSON.stringify(recoveredBody);
+  }
+
+  private cacheThinkingFromResponse(response: Response, auth: AuthDetails, modelName?: string) {
+    const sessionKey = this.getSessionKey(auth.provider, auth.account.id, modelName ?? auth.modelInProvider);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return;
+    }
+
+    response
+      .clone()
+      .json()
+      .then(payload => cacheThinkingFromResponse(payload, sessionKey))
+      .catch(() => undefined);
   }
 
   /**
@@ -332,5 +412,9 @@ export class AuthMonster {
 
 // Example usage/factory
 export function createAuthMonster(context: PluginContext) {
+  return new AuthMonster(context);
+}
+
+export default function authMonsterPlugin(context: PluginContext) {
   return new AuthMonster(context);
 }

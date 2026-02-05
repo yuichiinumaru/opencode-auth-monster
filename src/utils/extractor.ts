@@ -10,7 +10,27 @@ export interface ExtractedToken {
   email?: string;
 }
 
+export interface ExtractedCursorTokens {
+  accessToken: string;
+  refreshToken?: string;
+  source: "keychain" | "sqlite";
+}
+
 export class TokenExtractor {
+
+  static extractCursorFromKeychain(): ExtractedCursorTokens | null {
+    const token = this.getCursorToken();
+    if (!token) return null;
+    return { accessToken: token, source: "keychain" };
+  }
+
+  static extractCursorFromSQLite(): ExtractedCursorTokens | null {
+    return null;
+  }
+
+  static extractWindsurfFromSQLite(): string | null {
+    return this.getWindsurfAuth();
+  }
 
   /**
    * Auto-discover accounts from local environment (Cursor, Windsurf, Env Vars).

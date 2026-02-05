@@ -12,6 +12,8 @@ interface Message {
 
 interface Tool {
   name: string;
+  input_schema?: Record<string, any>;
+  parameters?: Record<string, any>;
   [key: string]: any;
 }
 
@@ -25,6 +27,8 @@ interface AnthropicRequestBody {
   };
   [key: string]: any;
 }
+
+import { cleanJsonSchemaForProvider } from '../../utils/sanitizer';
 
 const TOOL_PREFIX = "mcp_";
 const CLAUDE_USER_ID = "user_7b18c0b8358639d7ff4cdbf78a1552a7d5ca63ba83aee236c4b22ae2be77ba5f_account_3bb3dcbe-4efe-4795-b248-b73603575290_session_4a72737c-93d6-4c45-aebe-6e2d47281338";
@@ -85,12 +89,24 @@ export function transformRequest(body: AnthropicRequestBody): AnthropicRequestBo
     transformed.metadata.user_id = CLAUDE_USER_ID;
   }
 
-  // Add prefix to tools definitions
+  // Add prefix to tools definitions and clean schemas
   if (transformed.tools && Array.isArray(transformed.tools)) {
-    transformed.tools = transformed.tools.map((tool: Tool) => ({
-      ...tool,
-      name: tool.name ? (tool.name.startsWith(TOOL_PREFIX) ? tool.name : `${TOOL_PREFIX}${tool.name}`) : tool.name,
-    }));
+    transformed.tools = transformed.tools.map((tool: Tool) => {
+      const nextTool = {
+        ...tool,
+        name: tool.name ? (tool.name.startsWith(TOOL_PREFIX) ? tool.name : `${TOOL_PREFIX}${tool.name}`) : tool.name,
+      };
+
+      if (nextTool.input_schema) {
+        nextTool.input_schema = cleanJsonSchemaForProvider(nextTool.input_schema);
+      }
+
+      if (nextTool.parameters) {
+        nextTool.parameters = cleanJsonSchemaForProvider(nextTool.parameters);
+      }
+
+      return nextTool;
+    });
   }
 
   // Add prefix to tool_use blocks in messages
