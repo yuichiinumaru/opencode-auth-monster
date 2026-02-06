@@ -2,7 +2,7 @@ import { AuthProvider, ManagedAccount, OAuthTokens } from '../../core/types';
 import { proxyFetch } from '../../core/proxy';
 import { listenForCode } from '../../utils/oauth-server';
 
-const CLIENT_ID = "10009311001";
+const CLIENT_ID = process.env.IFLOW_CLIENT_ID || "10009311001";
 const CLIENT_SECRET = process.env.IFLOW_CLIENT_SECRET || "";
 const AUTH_URL = "https://iflow.cn/oauth";
 const TOKEN_URL = "https://iflow.cn/oauth/token";
@@ -29,6 +29,11 @@ export class IFlowProvider {
   static async refreshTokens(account: ManagedAccount): Promise<ManagedAccount> {
     if (!account.tokens.refreshToken) {
       return account;
+    }
+
+    if (!CLIENT_SECRET) {
+      console.error('iFlow Client Secret is missing. Please set IFLOW_CLIENT_SECRET environment variable.');
+      return { ...account, isHealthy: false };
     }
 
     try {
@@ -75,6 +80,10 @@ export class IFlowProvider {
   }
 
   static async login(): Promise<OAuthTokens & { apiKey?: string, email?: string }> {
+    if (!CLIENT_SECRET) {
+        throw new Error('iFlow Client Secret is missing. Please set IFLOW_CLIENT_SECRET environment variable.');
+    }
+
     const redirectUri = `http://localhost:${CALLBACK_PORT}/oauth2callback`;
     const state = Math.random().toString(36).substring(7);
 
@@ -122,7 +131,6 @@ export class IFlowProvider {
     const json = await response.json();
     const accessToken = json.access_token;
 
-    // Fetch User Info to get API Key
     let apiKey = undefined;
     let email = undefined;
 

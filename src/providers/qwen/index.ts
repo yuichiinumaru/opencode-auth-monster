@@ -2,7 +2,7 @@ import { AuthProvider, ManagedAccount, OAuthTokens } from '../../core/types';
 import { proxyFetch } from '../../core/proxy';
 import * as crypto from 'crypto';
 
-const CLIENT_ID = "f0304373b74a44d2b584a3fb70ca9e56";
+const CLIENT_ID = process.env.QWEN_CLIENT_ID || "";
 const DEVICE_CODE_URL = "https://chat.qwen.ai/api/v1/oauth2/device/code";
 const TOKEN_URL = "https://chat.qwen.ai/api/v1/oauth2/token";
 const SCOPE = "openid profile email model.completion";
@@ -47,6 +47,11 @@ export class QwenProvider {
       return account;
     }
 
+    if (!CLIENT_ID) {
+      console.error('Qwen Client ID is missing. Please set QWEN_CLIENT_ID environment variable.');
+      return { ...account, isHealthy: false };
+    }
+
     try {
       const response = await proxyFetch(TOKEN_URL, {
         method: "POST",
@@ -88,11 +93,13 @@ export class QwenProvider {
   }
 
   static async login(): Promise<OAuthTokens> {
-    // 1. Generate PKCE
+    if (!CLIENT_ID) {
+      throw new Error('Qwen Client ID is missing. Please set QWEN_CLIENT_ID environment variable.');
+    }
+
     const verifier = generateCodeVerifier();
     const challenge = generateCodeChallenge(verifier);
 
-    // 2. Initiate Device Flow
     const deviceResp = await proxyFetch(DEVICE_CODE_URL, {
         method: 'POST',
         headers: {
@@ -122,7 +129,6 @@ export class QwenProvider {
     console.log(`And enter code: \x1b[1m${userCode}\x1b[0m\n`);
     console.log(`Waiting for confirmation...`);
 
-    // 3. Poll for token
     while (true) {
         await new Promise(resolve => setTimeout(resolve, interval * 1000));
 

@@ -3,7 +3,7 @@ import { transformRequest, transformResponseText } from './transform';
 import { listenForCode } from '../../utils/oauth-server';
 import { proxyFetch } from '../../core/proxy';
 
-const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+const CLIENT_ID = process.env.ANTHROPIC_CLIENT_ID || "";
 
 export class AnthropicProvider {
   static readonly provider = AuthProvider.Anthropic;
@@ -19,11 +19,10 @@ export class AnthropicProvider {
     } else if (account.tokens.accessToken) {
       headers['authorization'] = `Bearer ${account.tokens.accessToken}`;
       
-      // Beta headers logic from reference
       const betas = [
         "oauth-2025-04-20",
         "interleaved-thinking-2025-05-14",
-        "claude-code-20250219" // Always include for now as per reference logic implying it's needed for Claude Code features
+        "claude-code-20250219"
       ];
       
       headers['anthropic-beta'] = betas.join(',');
@@ -40,6 +39,11 @@ export class AnthropicProvider {
   static async refreshTokens(account: ManagedAccount): Promise<ManagedAccount> {
     if (!account.tokens.refreshToken) {
       return account;
+    }
+
+    if (!CLIENT_ID) {
+      console.error('Anthropic Client ID is missing. Please set ANTHROPIC_CLIENT_ID environment variable.');
+      return { ...account, isHealthy: false };
     }
 
     try {
@@ -66,7 +70,7 @@ export class AnthropicProvider {
         tokens: {
           ...account.tokens,
           accessToken: json.access_token,
-          refreshToken: json.refresh_token || account.tokens.refreshToken, // Use new refresh token if provided
+          refreshToken: json.refresh_token || account.tokens.refreshToken,
           expiryDate: Date.now() + json.expires_in * 1000,
           tokenType: json.token_type || 'Bearer',
         },
@@ -74,8 +78,6 @@ export class AnthropicProvider {
       };
     } catch (error) {
       console.error('Failed to refresh Anthropic tokens:', error);
-      // Return account as is, or maybe mark as unhealthy? 
-      // For now, returning as is but the caller might check expiry.
       return {
         ...account,
         isHealthy: false
@@ -83,10 +85,11 @@ export class AnthropicProvider {
     }
   }
 
-  /**
-   * Performs interactive OAuth login using the standardized local callback server.
-   */
   static async login(): Promise<OAuthTokens> {
+    if (!CLIENT_ID) {
+      throw new Error('Anthropic Client ID is missing. Please set ANTHROPIC_CLIENT_ID environment variable.');
+    }
+
     const port = 1455;
     const redirectUri = `http://localhost:${port}/callback`;
     const authUrl = `https://console.anthropic.com/v1/oauth/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=offline_access`;

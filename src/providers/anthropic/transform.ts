@@ -1,3 +1,5 @@
+import * as crypto from 'crypto';
+
 interface MessageBlock {
   type: string;
   text?: string;
@@ -27,7 +29,8 @@ interface AnthropicRequestBody {
 }
 
 const TOOL_PREFIX = "mcp_";
-const CLAUDE_USER_ID = "user_7b18c0b8358639d7ff4cdbf78a1552a7d5ca63ba83aee236c4b22ae2be77ba5f_account_3bb3dcbe-4efe-4795-b248-b73603575290_session_4a72737c-93d6-4c45-aebe-6e2d47281338";
+// Use provided user ID or generate a random one for bypass
+const DEFAULT_USER_ID = process.env.ANTHROPIC_USER_ID || `user_${crypto.randomBytes(16).toString('hex')}`;
 
 /**
  * Deeply replaces 'OpenCode' with 'Claude Code' in any string value within an object.
@@ -82,7 +85,7 @@ export function transformRequest(body: AnthropicRequestBody): AnthropicRequestBo
     transformed.metadata = {};
   }
   if (!transformed.metadata.user_id) {
-    transformed.metadata.user_id = CLAUDE_USER_ID;
+    transformed.metadata.user_id = DEFAULT_USER_ID;
   }
 
   // Add prefix to tools definitions
@@ -118,5 +121,5 @@ export function transformRequest(body: AnthropicRequestBody): AnthropicRequestBo
  * Transforms the response text to remove the tool prefix.
  */
 export function transformResponseText(text: string): string {
-  return text.replace(/"name"\s*:\s*"mcp_([^"]+)"/g, '"name": "$1"');
+  return text.replace(/"name"\s*:\s*"mcp_([^"]+)"/g, '"name": ""');
 }
