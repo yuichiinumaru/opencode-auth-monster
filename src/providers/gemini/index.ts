@@ -3,7 +3,7 @@ import { listenForCode, generatePKCE } from '../../utils/oauth-server';
 import { proxyFetch } from '../../core/proxy';
 
 // Antigravity Constants
-const ANTIGRAVITY_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+const ANTIGRAVITY_CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID || "";
 const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET || "";
 const ANTIGRAVITY_ENDPOINT_PROD = "https://cloudcode-pa.googleapis.com";
 const ANTIGRAVITY_SCOPES = [

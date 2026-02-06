@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import { AuthProvider } from '../src/core/types';
 
 // Constants from the target plugin
-const ANTIGRAVITY_CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID || "REDACTED";
+const ANTIGRAVITY_CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID || "";
 const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET || "REDACTED";
 const ANTIGRAVITY_ENDPOINT_PROD = "https://cloudcode-pa.googleapis.com";
 
