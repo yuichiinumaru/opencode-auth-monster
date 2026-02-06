@@ -1,3 +1,4 @@
+import { detectRecoveryNeed, ensureThinkingBeforeToolUse } from './core/recovery';
 import {
   AuthProvider,
   AuthMonsterConfig,
@@ -8,7 +9,7 @@ import {
 import { StorageManager } from './core/storage';
 import { AccountRotator, RateLimitReason } from './core/rotation';
 import { UnifiedModelHub } from './core/hub';
-import { sanitizeCrossModelRequest } from './utils/sanitizer';
+import { sanitizeCrossModelRequest, applyHeaderSpoofing } from './utils/sanitizer';
 import { proxyFetch } from './core/proxy';
 import { CostEstimator } from './core/cost-estimator';
 import { HistoryManager } from './core/history';
@@ -102,7 +103,7 @@ export class AuthMonster {
       this.lastUsedAccountId = account.id;
     }
 
-    const headers = await this.getHeadersForAccount(provider, account);
+    const headers = await this.getHeadersForAccount(provider, account, modelInProvider);
 
     return {
       provider,
@@ -323,7 +324,8 @@ export class AuthMonster {
   /**
    * Generates headers using provider-specific logic
    */
-  private async getHeadersForAccount(provider: AuthProvider, account: ManagedAccount): Promise<Record<string, string>> {
+  private async getHeadersForAccount(provider: AuthProvider, account: ManagedAccount, model?: string): Promise<Record<string, string>> {
+    const baseHeaders = await (async () => {
     switch (provider) {
       case AuthProvider.Gemini:
         return GeminiProvider.getHeaders(account);
@@ -361,6 +363,8 @@ export class AuthMonster {
         }
         return headers;
     }
+  })();
+  return applyHeaderSpoofing(baseHeaders, account.id, provider, model);
   }
 
   /**
@@ -369,6 +373,9 @@ export class AuthMonster {
   transformRequest(provider: AuthProvider, body: any, modelInProvider?: string): any {
     // 1. Cross-model signature sanitization (Gemini <-> Claude conflicts)
     let sanitizedBody = sanitizeCrossModelRequest(body);
+    if (sanitizedBody.contents) {
+      sanitizedBody.contents = ensureThinkingBeforeToolUse(sanitizedBody.contents);
+    }
 
     // 1.5. Reasoning Enforcer
     if (this.config.thinking?.enabled) {
