@@ -1,15 +1,13 @@
 import { expect } from 'chai';
-import { AuthProvider } from '../src/core/types';
 
-// Mocking the behavior found in opencode-antigravity-auth
-const ANTIGRAVITY_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
-const ANTIGRAVITY_CLIENT_SECRET = "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";
-const ANTIGRAVITY_REDIRECT_URI = "http://localhost:51121/oauth-callback";
+// We use environment variables for tests or placeholders
+const ANTIGRAVITY_CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID || "MASKED_CLIENT_ID";
+const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET || "MASKED_CLIENT_SECRET";
 
 describe('Antigravity Reverse Engineering', () => {
-    it('should verify the Antigravity OAuth configuration', () => {
-        expect(ANTIGRAVITY_CLIENT_ID).to.equal("1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com");
-        expect(ANTIGRAVITY_CLIENT_SECRET).to.equal("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");
+    it('should verify that Antigravity OAuth variables are present (or placeholders)', () => {
+        expect(ANTIGRAVITY_CLIENT_ID).to.not.be.empty;
+        expect(ANTIGRAVITY_CLIENT_SECRET).to.not.be.empty;
     });
 
     it('should verify the endpoint fallbacks logic', () => {

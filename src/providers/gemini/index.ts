@@ -2,8 +2,9 @@ import { AuthProvider, ManagedAccount, OAuthTokens } from '../../core/types';
 import { listenForCode, generatePKCE } from '../../utils/oauth-server';
 import { proxyFetch } from '../../core/proxy';
 
-const ANTIGRAVITY_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
-const ANTIGRAVITY_CLIENT_SECRET = "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";
+// These should be provided via environment variables for security
+const ANTIGRAVITY_CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID || "";
+const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET || "";
 const ANTIGRAVITY_VERSION = "1.15.8";
 
 const GEMINI_CLIENT_ID = process.env.GEMINI_CLIENT_ID || ANTIGRAVITY_CLIENT_ID;
@@ -49,27 +50,27 @@ export class GeminiProvider {
       headers['x-goog-user-project'] = account.metadata.projectId;
     }
 
-    // Skip thought signature validation for thinking models (official Google feature)
     headers['x-goog-skip-thought-signature-validator'] = 'true';
 
     return headers;
   }
 
   static getUrl(model: string, account: ManagedAccount): string {
-    // Determine base endpoint
     let baseEndpoint = "https://generativelanguage.googleapis.com";
-
     if (model.includes('antigravity')) {
-        // Use daily endpoint for antigravity models
         baseEndpoint = ANTIGRAVITY_ENDPOINTS[0];
     }
-
     return `${baseEndpoint}/v1beta/models/${model}:generateContent`;
   }
 
   static async refreshTokens(account: ManagedAccount): Promise<ManagedAccount> {
     if (!account.tokens.refreshToken) {
       return account;
+    }
+
+    if (!GEMINI_CLIENT_ID || !GEMINI_CLIENT_SECRET) {
+      console.error('Gemini Client ID or Secret is missing. Please set GEMINI_CLIENT_ID and GEMINI_CLIENT_SECRET environment variables.');
+      return { ...account, isHealthy: false };
     }
 
     try {
@@ -116,6 +117,10 @@ export class GeminiProvider {
   }
 
   static async login(): Promise<OAuthTokens & { email: string, metadata?: any }> {
+    if (!GEMINI_CLIENT_ID || !GEMINI_CLIENT_SECRET) {
+      throw new Error('Gemini Client ID or Secret is missing. Please set GEMINI_CLIENT_ID and GEMINI_CLIENT_SECRET environment variables.');
+    }
+
     const port = 51121;
     const redirectUri = `http://localhost:${port}/oauth-callback`;
     const pkce = await generatePKCE();
