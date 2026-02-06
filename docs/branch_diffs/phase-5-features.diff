@@ -6264,7 +6264,7 @@ index 0000000..4a5f924
 +Object.defineProperty(exports, "transformResponseText", { enumerable: true, get: function () { return transform_1.transformResponseText; } });
 +const oauth_server_1 = require("../../utils/oauth-server");
 +const proxy_1 = require("../../core/proxy");
-+const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
++const CLIENT_ID = "MASKED_CLIENT_ID";
 +class AnthropicProvider {
 +    static getHeaders(account) {
 +        const headers = {
@@ -6394,7 +6394,7 @@ index 0000000..4bccd53
 +exports.transformRequest = transformRequest;
 +exports.transformResponseText = transformResponseText;
 +const TOOL_PREFIX = "mcp_";
-+const CLAUDE_USER_ID = "user_7b18c0b8358639d7ff4cdbf78a1552a7d5ca63ba83aee236c4b22ae2be77ba5f_account_3bb3dcbe-4efe-4795-b248-b73603575290_session_4a72737c-93d6-4c45-aebe-6e2d47281338";
++const CLAUDE_USER_ID = "MASKED_USER_ID";
 +/**
 + * Deeply replaces 'OpenCode' with 'Claude Code' in any string value within an object.
 + */
@@ -7314,7 +7314,7 @@ index 0000000..0f06626
 +const types_1 = require("../../core/types");
 +const proxy_1 = require("../../core/proxy");
 +const crypto = __importStar(require("crypto"));
-+const CLIENT_ID = "f0304373b74a44d2b584a3fb70ca9e56";
++const CLIENT_ID = "MASKED_CLIENT_ID";
 +const DEVICE_CODE_URL = "https://chat.qwen.ai/api/v1/oauth2/device/code";
 +const TOKEN_URL = "https://chat.qwen.ai/api/v1/oauth2/token";
 +const SCOPE = "openid profile email model.completion";
