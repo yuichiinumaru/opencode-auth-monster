@@ -27,3 +27,6 @@ This workspace contains multiple repositories in which our team is working in.
 | **Discovery** | `TokenExtractor` | Unified mechanism for extracting local tokens from Cursor (Keychain) and Windsurf (SQLite). |
 | **Proxy** | `ProxyManager` | Global proxy support via `proxyFetch`, respecting `HTTP_PROXY` env and global config. |
 | **Fallback** | Model Chain | Ordered fallback list for models, configurable via `opencode-monster fallback`. |
+| **Google Auth** | Port `51121` | Port used for Antigravity-compatible OAuth callbacks to support headless mode and SSH forwarding. |
+| **Quota** | v1internal Monitoring | Use `/v1internal:loadCodeAssist` and `/v1internal:retrieveUserQuota` for advanced Google quota/project tracking. |
+| **Soft Quota** | 90% Threshold | Proactive account rotation when quota usage exceeds 90% to prevent hard rate limits. |
