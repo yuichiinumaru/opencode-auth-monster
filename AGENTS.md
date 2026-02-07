@@ -27,3 +27,5 @@ This workspace contains multiple repositories in which our team is working in.
 | **Discovery** | `TokenExtractor` | Unified mechanism for extracting local tokens from Cursor (Keychain) and Windsurf (SQLite). |
 | **Proxy** | `ProxyManager` | Global proxy support via `proxyFetch`, respecting `HTTP_PROXY` env and global config. |
 | **Fallback** | Model Chain | Ordered fallback list for models, configurable via `opencode-monster fallback`. |
+| **Orchids** | Clerk JWT Auth | Uses Clerk `__client` cookie for SessionID/JWT rotation. |
+| **Orchids** | Custom SSE | Maps `model.text-delta` events to standard LLM output. |
