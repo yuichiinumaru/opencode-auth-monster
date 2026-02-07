@@ -2,12 +2,32 @@ import { AuthProvider, ManagedAccount, OAuthTokens } from '../../core/types';
 import { listenForCode, generatePKCE } from '../../utils/oauth-server';
 import { proxyFetch } from '../../core/proxy';
 
-const GEMINI_CLIENT_ID = process.env.GEMINI_CLIENT_ID || "";
-const GEMINI_CLIENT_SECRET = process.env.GEMINI_CLIENT_SECRET || "";
+// These should be provided via environment variables for security
+const ANTIGRAVITY_CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID || "";
+const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET || "";
+const ANTIGRAVITY_VERSION = "1.15.8";
+
+const GEMINI_CLIENT_ID = process.env.GEMINI_CLIENT_ID || ANTIGRAVITY_CLIENT_ID;
+const GEMINI_CLIENT_SECRET = process.env.GEMINI_CLIENT_SECRET || ANTIGRAVITY_CLIENT_SECRET;
+
 const GEMINI_SCOPES = [
   "https://www.googleapis.com/auth/cloud-platform",
   "https://www.googleapis.com/auth/userinfo.email", 
-  "https://www.googleapis.com/auth/userinfo.profile"
+  "https://www.googleapis.com/auth/userinfo.profile",
+  "https://www.googleapis.com/auth/cclog",
+  "https://www.googleapis.com/auth/experimentsandconfigs"
+];
+
+const ANTIGRAVITY_HEADERS = {
+  "User-Agent": `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${ANTIGRAVITY_VERSION} Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36`,
+  "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1",
+  "Client-Metadata": '{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}',
+};
+
+const ANTIGRAVITY_ENDPOINTS = [
+    "https://daily-cloudcode-pa.sandbox.googleapis.com",
+    "https://autopush-cloudcode-pa.sandbox.googleapis.com",
+    "https://cloudcode-pa.googleapis.com"
 ];
 
 export class GeminiProvider {
@@ -16,6 +36,8 @@ export class GeminiProvider {
   static getHeaders(account: ManagedAccount): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'User-Agent': ANTIGRAVITY_HEADERS['User-Agent'],
+      'X-Goog-Api-Client': ANTIGRAVITY_HEADERS['X-Goog-Api-Client'],
     };
 
     if (account.apiKey) {
@@ -24,16 +46,21 @@ export class GeminiProvider {
       headers['Authorization'] = `Bearer ${account.tokens.accessToken}`;
     }
 
-    // Ported from vibe-open-auth: Multi-account metadata headers if needed
     if (account.metadata?.projectId) {
       headers['x-goog-user-project'] = account.metadata.projectId;
     }
+
+    headers['x-goog-skip-thought-signature-validator'] = 'true';
 
     return headers;
   }
 
   static getUrl(model: string, account: ManagedAccount): string {
-    return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    let baseEndpoint = "https://generativelanguage.googleapis.com";
+    if (model.includes('antigravity')) {
+        baseEndpoint = ANTIGRAVITY_ENDPOINTS[0];
+    }
+    return `${baseEndpoint}/v1beta/models/${model}:generateContent`;
   }
 
   static async refreshTokens(account: ManagedAccount): Promise<ManagedAccount> {
@@ -41,8 +68,12 @@ export class GeminiProvider {
       return account;
     }
 
+    if (!GEMINI_CLIENT_ID || !GEMINI_CLIENT_SECRET) {
+      console.error('Gemini Client ID or Secret is missing. Please set GEMINI_CLIENT_ID and GEMINI_CLIENT_SECRET environment variables.');
+      return { ...account, isHealthy: false };
+    }
+
     try {
-      // Parse project ID from refresh token if it was stored that way (ref: shantur-opencode-gemini-auth)
       const [refreshToken, projectId = ""] = account.tokens.refreshToken.split('|');
 
       const response = await proxyFetch("https://oauth2.googleapis.com/token", {
@@ -85,22 +116,17 @@ export class GeminiProvider {
     }
   }
 
-  /**
-   * Performs interactive OAuth login using the standardized local callback server.
-   */
   static async login(): Promise<OAuthTokens & { email: string, metadata?: any }> {
-    const port = 1455;
-    const redirectUri = `http://localhost:${port}/callback`;
+    if (!GEMINI_CLIENT_ID || !GEMINI_CLIENT_SECRET) {
+      throw new Error('Gemini Client ID or Secret is missing. Please set GEMINI_CLIENT_ID and GEMINI_CLIENT_SECRET environment variables.');
+    }
+
+    const port = 51121;
+    const redirectUri = `http://localhost:${port}/oauth-callback`;
     const pkce = await generatePKCE();
     
-    // Optional: Ask for project ID
-    console.log("\n=== Google Gemini OAuth Setup ===");
-    console.log("If you have a specific Google Cloud Project ID, you can use it.");
-    console.log("Otherwise, the system will attempt to use/create a managed project.");
+    console.log("\n=== Google Gemini (Antigravity Mode) OAuth Setup ===");
     
-    // In a real CLI we would use readline, but here we'll just proceed with default/empty
-    const projectId = ""; 
-
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     url.searchParams.set("client_id", GEMINI_CLIENT_ID);
     url.searchParams.set("response_type", "code");
@@ -108,7 +134,7 @@ export class GeminiProvider {
     url.searchParams.set("scope", GEMINI_SCOPES.join(" "));
     url.searchParams.set("code_challenge", pkce.challenge);
     url.searchParams.set("code_challenge_method", "S256");
-    url.searchParams.set("state", Buffer.from(JSON.stringify({ verifier: pkce.verifier, projectId })).toString('base64'));
+    url.searchParams.set("state", Buffer.from(JSON.stringify({ verifier: pkce.verifier, projectId: "" })).toString('base64'));
     url.searchParams.set("access_type", "offline");
     url.searchParams.set("prompt", "consent");
 
@@ -121,12 +147,13 @@ export class GeminiProvider {
 
     console.log('Code received, exchanging for tokens...');
     
-    const { verifier, projectId: stateProjectId } = JSON.parse(Buffer.from(state, 'base64').toString());
+    const { verifier } = JSON.parse(Buffer.from(state, 'base64').toString());
 
     const response = await proxyFetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": ANTIGRAVITY_HEADERS["User-Agent"],
       },
       body: new URLSearchParams({
         client_id: GEMINI_CLIENT_ID,
@@ -145,7 +172,8 @@ export class GeminiProvider {
 
     const json = await response.json() as any;
     
-    // Get user info to get email
+    let projectId = await this.fetchProjectID(json.access_token);
+
     const userInfoResponse = await proxyFetch("https://www.googleapis.com/oauth2/v1/userinfo?alt=json", {
       headers: {
         "Authorization": `Bearer ${json.access_token}`
@@ -156,21 +184,78 @@ export class GeminiProvider {
 
     return {
       accessToken: json.access_token,
-      refreshToken: `${json.refresh_token}|${stateProjectId || ""}`,
+      refreshToken: `${json.refresh_token}|${projectId || ""}`,
       expiryDate: Date.now() + (json.expires_in * 1000),
       tokenType: json.token_type || 'Bearer',
       email: userInfo.email,
       metadata: {
-        projectId: stateProjectId
+        projectId: projectId
       }
     };
   }
 
-  /**
-   * Transforms standardized OpenAI-like request to Gemini's format.
-   */
+  static async fetchProjectID(accessToken: string): Promise<string> {
+    for (const endpoint of [ANTIGRAVITY_ENDPOINTS[2], ANTIGRAVITY_ENDPOINTS[0]]) {
+        try {
+            const response = await proxyFetch(`${endpoint}/v1internal:loadCodeAssist`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${accessToken}`,
+                    "Content-Type": "application/json",
+                    ...ANTIGRAVITY_HEADERS
+                },
+                body: JSON.stringify({
+                    metadata: {
+                        ideType: "IDE_UNSPECIFIED",
+                        platform: "PLATFORM_UNSPECIFIED",
+                        pluginType: "GEMINI",
+                    },
+                }),
+            });
+
+            if (!response.ok) continue;
+
+            const data = await response.json() as any;
+            const pid = data.cloudaicompanionProject?.id || data.cloudaicompanionProject || "";
+            if (pid) return pid;
+        } catch {
+            continue;
+        }
+    }
+    return "";
+  }
+
+  static async checkQuota(account: ManagedAccount): Promise<any> {
+    const results: any = { antigravity: null, geminiCli: null };
+
+    try {
+        const antResp = await proxyFetch(`${ANTIGRAVITY_ENDPOINTS[2]}/v1internal:fetchAvailableModels`, {
+            method: "POST",
+            headers: this.getHeaders(account),
+            body: JSON.stringify(account.metadata?.projectId ? { project: account.metadata.projectId } : {}),
+        });
+        if (antResp.ok) results.antigravity = await antResp.json();
+
+        const geminiCliUserAgent = "GeminiCLI/1.0.0/gemini-2.5-pro (darwin; arm64)";
+        const cliResp = await proxyFetch(`${ANTIGRAVITY_ENDPOINTS[2]}/v1internal:retrieveUserQuota`, {
+            method: "POST",
+            headers: {
+                ...this.getHeaders(account),
+                "User-Agent": geminiCliUserAgent
+            },
+            body: JSON.stringify(account.metadata?.projectId ? { project: account.metadata.projectId } : {}),
+        });
+        if (cliResp.ok) results.geminiCli = await cliResp.json();
+
+    } catch (e) {
+        console.error("Quota check failed", e);
+    }
+
+    return results;
+  }
+
   static transformRequest(body: any): any {
-    if (body.contents) return body; // Already in Gemini format
+    if (body.contents) return body;
 
     const transformed: any = {
       contents: []
@@ -178,12 +263,10 @@ export class GeminiProvider {
 
     if (body.messages && Array.isArray(body.messages)) {
       transformed.contents = body.messages.map((msg: any) => {
-        // Convert roles
         let role = msg.role;
         if (role === 'assistant') role = 'model';
-        if (role === 'system') role = 'user'; // Gemini system instruction is handled differently but for simple cases we can map to user
+        if (role === 'system') role = 'user';
 
-        // Convert content to parts
         let parts = [];
         if (typeof msg.content === 'string') {
           parts = [{ text: msg.content }];
@@ -191,7 +274,6 @@ export class GeminiProvider {
           parts = msg.content.map((part: any) => {
             if (part.type === 'text') return { text: part.text };
             if (part.type === 'image_url') {
-               // Handle image mapping if needed
                return { text: '[Image]' };
             }
             return part;
@@ -202,13 +284,10 @@ export class GeminiProvider {
       });
     }
 
-    // Move model
     if (body.model) {
-      // In Gemini API, the model is often in the URL, but some clients expect it in body
       transformed.model = body.model;
     }
 
-    // Safety settings, generation config, etc.
     transformed.generationConfig = {
       temperature: body.temperature,
       maxOutputTokens: body.max_tokens,

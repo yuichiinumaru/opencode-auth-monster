@@ -61,6 +61,11 @@ export interface ManagedAccount {
       remaining: number;
       resetTime?: number;
     }>;
+    groups?: Record<string, {
+      remainingFraction: number;
+      resetTime?: number;
+      modelCount: number;
+    }>;
   };
 }
 
