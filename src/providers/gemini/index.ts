@@ -7,8 +7,17 @@ const GEMINI_CLIENT_SECRET = process.env.GEMINI_CLIENT_SECRET || "";
 const GEMINI_SCOPES = [
   "https://www.googleapis.com/auth/cloud-platform",
   "https://www.googleapis.com/auth/userinfo.email", 
-  "https://www.googleapis.com/auth/userinfo.profile"
+  "https://www.googleapis.com/auth/userinfo.profile",
+  "https://www.googleapis.com/auth/cclog",
+  "https://www.googleapis.com/auth/experimentsandconfigs"
 ];
+
+const ANTIGRAVITY_ENDPOINT_PROD = "https://cloudcode-pa.googleapis.com";
+const ANTIGRAVITY_HEADERS = {
+  "User-Agent": "Antigravity/1.15.8",
+  "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1",
+  "Client-Metadata": '{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}',
+};
 
 export class GeminiProvider {
   static readonly provider = AuthProvider.Gemini;
@@ -24,7 +33,6 @@ export class GeminiProvider {
       headers['Authorization'] = `Bearer ${account.tokens.accessToken}`;
     }
 
-    // Ported from vibe-open-auth: Multi-account metadata headers if needed
     if (account.metadata?.projectId) {
       headers['x-goog-user-project'] = account.metadata.projectId;
     }
@@ -33,6 +41,9 @@ export class GeminiProvider {
   }
 
   static getUrl(model: string, account: ManagedAccount): string {
+    if (model.includes('antigravity') || model.includes('claude')) {
+      return `${ANTIGRAVITY_ENDPOINT_PROD}/v1beta/models/${model}:generateContent`;
+    }
     return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   }
 
@@ -42,7 +53,6 @@ export class GeminiProvider {
     }
 
     try {
-      // Parse project ID from refresh token if it was stored that way (ref: shantur-opencode-gemini-auth)
       const [refreshToken, projectId = ""] = account.tokens.refreshToken.split('|');
 
       const response = await proxyFetch("https://oauth2.googleapis.com/token", {
@@ -64,14 +74,23 @@ export class GeminiProvider {
 
       const json = await response.json() as any;
       
+      let effectiveProjectId = projectId;
+      if (!effectiveProjectId) {
+         effectiveProjectId = await this.fetchProjectID(json.access_token);
+      }
+
       return {
         ...account,
         tokens: {
           ...account.tokens,
           accessToken: json.access_token,
-          refreshToken: json.refresh_token ? `${json.refresh_token}|${projectId}` : account.tokens.refreshToken,
+          refreshToken: json.refresh_token ? `${json.refresh_token}|${effectiveProjectId}` : account.tokens.refreshToken,
           expiryDate: Date.now() + (json.expires_in * 1000),
           tokenType: json.token_type || 'Bearer',
+        },
+        metadata: {
+          ...account.metadata,
+          projectId: effectiveProjectId
         },
         lastUsed: Date.now(),
         isHealthy: true
@@ -85,20 +104,43 @@ export class GeminiProvider {
     }
   }
 
-  /**
-   * Performs interactive OAuth login using the standardized local callback server.
-   */
+  static async fetchProjectID(accessToken: string): Promise<string> {
+    try {
+      const response = await proxyFetch(`${ANTIGRAVITY_ENDPOINT_PROD}/v1internal:loadCodeAssist`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "User-Agent": ANTIGRAVITY_HEADERS["User-Agent"],
+          "X-Goog-Api-Client": ANTIGRAVITY_HEADERS["X-Goog-Api-Client"],
+          "Client-Metadata": ANTIGRAVITY_HEADERS["Client-Metadata"],
+        },
+        body: JSON.stringify({
+          metadata: {
+            ideType: "IDE_UNSPECIFIED",
+            platform: "PLATFORM_UNSPECIFIED",
+            pluginType: "GEMINI",
+          },
+        }),
+      });
+
+      if (!response.ok) return "";
+
+      const data = await response.json() as any;
+      if (typeof data.cloudaicompanionProject === 'string') return data.cloudaicompanionProject;
+      if (data.cloudaicompanionProject?.id) return data.cloudaicompanionProject.id;
+
+      return "";
+    } catch {
+      return "";
+    }
+  }
+
   static async login(): Promise<OAuthTokens & { email: string, metadata?: any }> {
     const port = 1455;
     const redirectUri = `http://localhost:${port}/callback`;
     const pkce = await generatePKCE();
     
-    // Optional: Ask for project ID
-    console.log("\n=== Google Gemini OAuth Setup ===");
-    console.log("If you have a specific Google Cloud Project ID, you can use it.");
-    console.log("Otherwise, the system will attempt to use/create a managed project.");
-    
-    // In a real CLI we would use readline, but here we'll just proceed with default/empty
     const projectId = ""; 
 
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -114,12 +156,9 @@ export class GeminiProvider {
 
     console.log(`\nPlease visit the following URL to authorize Gemini:\n`);
     console.log(`\x1b[36m${url.toString()}\x1b[0m\n`);
-    console.log(`Waiting for callback on port ${port}...`);
 
     const codeWithState = await listenForCode(port);
     const [code, state] = codeWithState.split('#');
-
-    console.log('Code received, exchanging for tokens...');
     
     const { verifier, projectId: stateProjectId } = JSON.parse(Buffer.from(state, 'base64').toString());
 
@@ -139,13 +178,16 @@ export class GeminiProvider {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to exchange Gemini code: ${response.status} ${errorText}`);
+      throw new Error(`Failed to exchange Gemini code: ${response.status}`);
     }
 
     const json = await response.json() as any;
     
-    // Get user info to get email
+    let effectiveProjectId = stateProjectId;
+    if (!effectiveProjectId) {
+      effectiveProjectId = await this.fetchProjectID(json.access_token);
+    }
+
     const userInfoResponse = await proxyFetch("https://www.googleapis.com/oauth2/v1/userinfo?alt=json", {
       headers: {
         "Authorization": `Bearer ${json.access_token}`
@@ -156,21 +198,18 @@ export class GeminiProvider {
 
     return {
       accessToken: json.access_token,
-      refreshToken: `${json.refresh_token}|${stateProjectId || ""}`,
+      refreshToken: `${json.refresh_token}|${effectiveProjectId || ""}`,
       expiryDate: Date.now() + (json.expires_in * 1000),
       tokenType: json.token_type || 'Bearer',
       email: userInfo.email,
       metadata: {
-        projectId: stateProjectId
+        projectId: effectiveProjectId
       }
     };
   }
 
-  /**
-   * Transforms standardized OpenAI-like request to Gemini's format.
-   */
   static transformRequest(body: any): any {
-    if (body.contents) return body; // Already in Gemini format
+    if (body.contents) return body;
 
     const transformed: any = {
       contents: []
@@ -178,22 +217,17 @@ export class GeminiProvider {
 
     if (body.messages && Array.isArray(body.messages)) {
       transformed.contents = body.messages.map((msg: any) => {
-        // Convert roles
         let role = msg.role;
         if (role === 'assistant') role = 'model';
-        if (role === 'system') role = 'user'; // Gemini system instruction is handled differently but for simple cases we can map to user
+        if (role === 'system') role = 'user';
 
-        // Convert content to parts
         let parts = [];
         if (typeof msg.content === 'string') {
           parts = [{ text: msg.content }];
         } else if (Array.isArray(msg.content)) {
           parts = msg.content.map((part: any) => {
             if (part.type === 'text') return { text: part.text };
-            if (part.type === 'image_url') {
-               // Handle image mapping if needed
-               return { text: '[Image]' };
-            }
+            if (part.type === 'image_url') return { text: '[Image]' };
             return part;
           });
         }
@@ -202,13 +236,10 @@ export class GeminiProvider {
       });
     }
 
-    // Move model
     if (body.model) {
-      // In Gemini API, the model is often in the URL, but some clients expect it in body
       transformed.model = body.model;
     }
 
-    // Safety settings, generation config, etc.
     transformed.generationConfig = {
       temperature: body.temperature,
       maxOutputTokens: body.max_tokens,
@@ -218,5 +249,48 @@ export class GeminiProvider {
     };
 
     return transformed;
+  }
+
+  static async checkQuota(account: ManagedAccount): Promise<any> {
+    const accessToken = account.tokens.accessToken;
+    const projectId = account.metadata?.projectId || "";
+
+    const response = await proxyFetch(`${ANTIGRAVITY_ENDPOINT_PROD}/v1internal:fetchAvailableModels`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "User-Agent": ANTIGRAVITY_HEADERS["User-Agent"],
+      },
+      body: JSON.stringify(projectId ? { project: projectId } : {}),
+    });
+
+    if (!response.ok) {
+      throw new Error(`fetchAvailableModels failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Update account quota state
+    if (data.models) {
+      account.quota = account.quota || { limit: 1000, remaining: 1000 };
+      account.quota.modelSpecific = account.quota.modelSpecific || {};
+
+      for (const [modelId, info] of Object.entries(data.models)) {
+        const quotaInfo = (info as any).quotaInfo;
+        if (quotaInfo) {
+          account.quota.modelSpecific[modelId] = {
+            limit: 100, // Assumption
+            remaining: Math.floor((quotaInfo.remainingFraction || 0) * 100),
+            resetTime: quotaInfo.resetTime ? Date.parse(quotaInfo.resetTime) : undefined
+          };
+
+          // Update global remaining as the minimum of all models
+          account.quota.remaining = Math.min(account.quota.remaining, account.quota.modelSpecific[modelId].remaining);
+        }
+      }
+    }
+
+    return data;
   }
 }

@@ -92,6 +92,24 @@ export class UnifiedModelHub {
         { provider: AuthProvider.Windsurf, modelInProvider: 'claude-haiku-4.5' }
     ]);
 
+    // --- GEMINI 3 & CLAUDE 4.5 (Antigravity Suite) ---
+    this.addMapping('gemini-3-pro', [
+        { provider: AuthProvider.Gemini, modelInProvider: 'antigravity-gemini-3-pro' },
+        { provider: AuthProvider.Gemini, modelInProvider: 'gemini-3-pro-preview' }
+    ]);
+    this.addMapping('gemini-3-flash', [
+        { provider: AuthProvider.Gemini, modelInProvider: 'antigravity-gemini-3-flash' },
+        { provider: AuthProvider.Gemini, modelInProvider: 'gemini-3-flash-preview' }
+    ]);
+    this.addMapping('claude-4.5-sonnet-thinking', [
+        { provider: AuthProvider.Gemini, modelInProvider: 'antigravity-claude-sonnet-4-5-thinking' },
+        { provider: AuthProvider.Anthropic, modelInProvider: 'claude-4.5-sonnet' }
+    ]);
+    this.addMapping('claude-4.5-opus-thinking', [
+        { provider: AuthProvider.Gemini, modelInProvider: 'antigravity-claude-opus-4-5-thinking' },
+        { provider: AuthProvider.Anthropic, modelInProvider: 'claude-4.5-opus' }
+    ]);
+
     // Gemini: 2.5 Family (The "Workhorse" Suite)
     this.addMapping('gemini-2.5-pro', [
         { provider: AuthProvider.Gemini, modelInProvider: 'gemini-2.5-pro' },
