@@ -41,12 +41,74 @@ export const DEFAULT_HEALTH_SCORE_CONFIG: HealthScoreConfig = {
 };
 
 // ============================================================================
+// TOKEN BUCKET SYSTEM
+// ============================================================================
+
+export interface TokenBucketConfig {
+  maxTokens: number;
+  regenerationRatePerMinute: number;
+  initialTokens: number;
+}
+
+export const DEFAULT_TOKEN_BUCKET_CONFIG: TokenBucketConfig = {
+  maxTokens: 50,
+  regenerationRatePerMinute: 6,
+  initialTokens: 50,
+};
+
+interface TokenBucketState {
+  tokens: number;
+  lastUpdated: number;
+}
+
+export class TokenBucketTracker {
+  private buckets = new Map<string, TokenBucketState>();
+  private config: TokenBucketConfig;
+
+  constructor(config: Partial<TokenBucketConfig> = {}) {
+    this.config = { ...DEFAULT_TOKEN_BUCKET_CONFIG, ...config };
+  }
+
+  getTokens(accountId: string): number {
+    const state = this.buckets.get(accountId);
+    if (!state) {
+      return this.config.initialTokens;
+    }
+
+    const now = Date.now();
+    const minutesSinceUpdate = (now - state.lastUpdated) / (1000 * 60);
+    const recoveredTokens = minutesSinceUpdate * this.config.regenerationRatePerMinute;
+
+    return Math.min(
+      this.config.maxTokens,
+      state.tokens + recoveredTokens
+    );
+  }
+
+  hasTokens(accountId: string, cost: number = 1): boolean {
+    return this.getTokens(accountId) >= cost;
+  }
+
+  consume(accountId: string, cost: number = 1): boolean {
+    const current = this.getTokens(accountId);
+    if (current < cost) {
+      return false;
+    }
+
+    this.buckets.set(accountId, {
+      tokens: current - cost,
+      lastUpdated: Date.now(),
+    });
+    return true;
+  }
+}
+
+// ============================================================================
 // HEALTH SCORE TRACKER
 // ============================================================================
 
 export class HealthScoreTracker {
   private config: HealthScoreConfig;
-  // Map account ID to last update timestamp for passive recovery calculation
   private lastUpdateTimes: Map<string, number> = new Map();
 
   constructor(config: Partial<HealthScoreConfig> = {}) {
@@ -57,12 +119,14 @@ export class HealthScoreTracker {
     const currentScore = account.healthScore ?? this.config.initial;
     const lastUpdate = this.lastUpdateTimes.get(account.id) ?? Date.now();
     
-    // Apply passive recovery
     const now = Date.now();
     const hoursSinceUpdate = (now - lastUpdate) / (1000 * 60 * 60);
     
     if (hoursSinceUpdate > 0) {
-      const recoveredPoints = Math.floor(hoursSinceUpdate * this.config.recoveryRatePerHour);
+      // Dynamic recovery rate based on consecutive successes
+      const consecutiveSuccesses = account.metadata?.consecutiveSuccesses || 0;
+      const bonusRate = Math.min(5, Math.floor(consecutiveSuccesses / 10));
+      const recoveredPoints = Math.floor(hoursSinceUpdate * (this.config.recoveryRatePerHour + bonusRate));
       return Math.min(this.config.maxScore, currentScore + recoveredPoints);
     }
     
@@ -73,6 +137,10 @@ export class HealthScoreTracker {
     const current = this.getScore(account);
     account.healthScore = Math.min(this.config.maxScore, current + this.config.successReward);
     account.consecutiveFailures = 0;
+
+    if (!account.metadata) account.metadata = {};
+    account.metadata.consecutiveSuccesses = (account.metadata.consecutiveSuccesses || 0) + 1;
+
     account.isHealthy = account.healthScore >= this.config.minUsable;
     this.lastUpdateTimes.set(account.id, Date.now());
   }
@@ -81,6 +149,10 @@ export class HealthScoreTracker {
     const current = this.getScore(account);
     account.healthScore = Math.max(0, current + this.config.rateLimitPenalty);
     account.consecutiveFailures = (account.consecutiveFailures ?? 0) + 1;
+
+    if (!account.metadata) account.metadata = {};
+    account.metadata.consecutiveSuccesses = 0; // Reset successes on rate limit
+
     account.isHealthy = account.healthScore >= this.config.minUsable;
     this.lastUpdateTimes.set(account.id, Date.now());
   }
@@ -89,6 +161,10 @@ export class HealthScoreTracker {
     const current = this.getScore(account);
     account.healthScore = Math.max(0, current + this.config.failurePenalty);
     account.consecutiveFailures = (account.consecutiveFailures ?? 0) + 1;
+
+    if (!account.metadata) account.metadata = {};
+    account.metadata.consecutiveSuccesses = 0; // Reset successes on failure
+
     account.isHealthy = account.healthScore >= this.config.minUsable;
     this.lastUpdateTimes.set(account.id, Date.now());
   }
@@ -102,55 +178,61 @@ export class HealthScoreTracker {
 // ACCOUNT ROTATOR
 // ============================================================================
 
+const STICKINESS_BONUS = 15;
+const SWITCH_THRESHOLD = 10;
+
 export class AccountRotator {
   private healthTracker: HealthScoreTracker;
+  private tokenTracker: TokenBucketTracker;
   private cursor: number = 0;
   private lastRateLimitTimes: Map<string, number> = new Map();
+  private currentAccountId: string | null = null;
 
-  constructor(healthConfig?: Partial<HealthScoreConfig>) {
+  constructor(healthConfig?: Partial<HealthScoreConfig>, tokenConfig?: Partial<TokenBucketConfig>) {
     this.healthTracker = new HealthScoreTracker(healthConfig);
-    // PID-based initial offset for round-robin to maximize throughput across parallel instances
+    this.tokenTracker = new TokenBucketTracker(tokenConfig);
     this.cursor = process.pid;
   }
 
   selectAccount(accounts: ManagedAccount[], strategy: AuthMethod = 'sticky'): ManagedAccount | null {
     if (!accounts.length) return null;
 
-    // Filter out accounts that are cooling down or rate limited OR unhealthy
     const availableAccounts = accounts.filter(acc => {
       const now = Date.now();
       if (acc.rateLimitResetTime && now < acc.rateLimitResetTime) return false;
       if (acc.cooldownUntil && now < acc.cooldownUntil) return false;
-      
-      // Check global cooldown manager
       if (isOnCooldown(acc.provider, acc.id)) return false;
-
-      // Check explicit quota if available (Proactive check)
       if (acc.quota && acc.quota.remaining <= 0) return false;
-
-      // Check health
       if (!this.healthTracker.isUsable(acc)) return false;
+      if (!this.tokenTracker.hasTokens(acc.id)) return false;
 
       return true;
     });
 
     if (availableAccounts.length === 0) return null;
 
+    let selected: ManagedAccount;
     switch (strategy) {
       case 'round-robin':
-        return this.selectRoundRobin(availableAccounts);
+        selected = this.selectRoundRobin(availableAccounts);
+        break;
       case 'hybrid':
-        return this.selectHybrid(availableAccounts);
+        selected = this.selectHybrid(availableAccounts);
+        break;
       case 'quota-optimized':
-        return this.selectQuotaOptimized(availableAccounts);
+        selected = this.selectQuotaOptimized(availableAccounts);
+        break;
       case 'sticky':
       default:
-        return this.selectSticky(availableAccounts);
+        selected = this.selectSticky(availableAccounts);
+        break;
     }
+
+    this.currentAccountId = selected.id;
+    return selected;
   }
 
   private selectQuotaOptimized(accounts: ManagedAccount[]): ManagedAccount {
-    // Sort by remaining quota (descending)
     const sorted = [...accounts].sort((a, b) => {
       const quotaA = a.quota?.remaining ?? 1000;
       const quotaB = b.quota?.remaining ?? 1000;
@@ -166,44 +248,46 @@ export class AccountRotator {
   }
 
   private selectSticky(accounts: ManagedAccount[]): ManagedAccount {
-    // Incorporate a process-based offset to ensure different IDE instances 
-    // or subagents pick different starting accounts.
+    if (this.currentAccountId) {
+      const current = accounts.find(a => a.id === this.currentAccountId);
+      if (current) return current;
+    }
     const offset = process.pid % accounts.length;
     return accounts[offset];
   }
 
   private selectHybrid(accounts: ManagedAccount[]): ManagedAccount {
-    // Sort by health score (descending) and then by last used (ascending - LRU)
-    // We want the healthiest account that hasn't been used recently.
-    
-    const scored = accounts.map(acc => ({
-      account: acc,
-      score: this.healthTracker.getScore(acc),
-      lastUsed: acc.lastUsed ?? 0
-    }));
+    const scored = accounts.map(acc => {
+      const healthScore = this.healthTracker.getScore(acc);
+      const tokens = this.tokenTracker.getTokens(acc.id);
+      const tokenScore = (tokens / 50) * 20;
 
-    // Apply PID-based rotation to the base list to break ties in a way that
-    // maximizes throughput across parallel instances.
-    const pidOffset = process.pid % scored.length;
-    const rotatedScored = [
-      ...scored.slice(pidOffset),
-      ...scored.slice(0, pidOffset)
-    ];
+      let baseScore = healthScore + tokenScore;
+      let finalScore = baseScore;
 
-    rotatedScored.sort((a, b) => {
-      // Primary: Health Score
-      if (Math.abs(a.score - b.score) > 5) { // 5 point buffer
-        return b.score - a.score;
+      if (acc.id === this.currentAccountId) {
+        finalScore += STICKINESS_BONUS;
       }
-      // Secondary: LRU (Least Recently Used)
-      return a.lastUsed - b.lastUsed;
+
+      return { account: acc, baseScore, finalScore };
     });
 
-    return rotatedScored[0].account;
+    scored.sort((a, b) => b.finalScore - a.finalScore);
+
+    const best = scored[0];
+    if (this.currentAccountId && best.account.id !== this.currentAccountId) {
+      const current = scored.find(s => s.account.id === this.currentAccountId);
+      if (current && (best.baseScore - current.baseScore < SWITCH_THRESHOLD)) {
+        return current.account;
+      }
+    }
+
+    return best.account;
   }
 
   recordSuccess(account: ManagedAccount): void {
     this.healthTracker.recordSuccess(account);
+    this.tokenTracker.consume(account.id);
     account.lastUsed = Date.now();
   }
 
@@ -215,7 +299,6 @@ export class AccountRotator {
     const now = Date.now();
     const lastAt = this.lastRateLimitTimes.get(account.id) ?? 0;
 
-    // Deduplicate concurrent 429s within 2000ms window
     if (now - lastAt < RATE_LIMIT_DEDUP_WINDOW_MS) {
       if (retryAfterMs) {
         account.rateLimitResetTime = now + retryAfterMs;
@@ -226,7 +309,11 @@ export class AccountRotator {
     this.lastRateLimitTimes.set(account.id, now);
     this.healthTracker.recordRateLimit(account);
     
-    const backoff = retryAfterMs ?? this.calculateBackoff(reason, account.consecutiveFailures ?? 1);
+    let backoff = retryAfterMs ?? this.calculateBackoff(reason, account.consecutiveFailures ?? 1);
+
+    const jitter = (Math.random() * 0.4 - 0.2) * backoff;
+    backoff = Math.max(MIN_BACKOFF_MS, Math.round(backoff + jitter));
+
     account.rateLimitResetTime = now + backoff;
     account.lastSwitchReason = 'rate-limit';
   }

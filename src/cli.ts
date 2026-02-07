@@ -51,9 +51,7 @@ async function main() {
     .option('-k, --key <key>', 'API Key (if applicable)')
     .action(async (options) => {
       await monster.init();
-      // Placeholder for interactive or direct add
       console.log('Adding account...', options);
-      // Logic from Phase 2
     });
 
   program.command('status')
@@ -82,10 +80,7 @@ async function main() {
     .description('Sync accounts to GitHub Secrets')
     .action(async () => {
       await monster.init();
-      // TODO: Implement repo selection or get from config
       console.log('Sync requires a target repository. Use: auth-monster sync <owner/repo>');
-      // await syncToGitHub('owner/repo', monster.getAccounts());
-      console.log('Sync placeholder.');
     });
 
   program.command('onboard')
@@ -95,12 +90,42 @@ async function main() {
       await runOnboardingWizard(monster);
     });
 
+  program.command("plugin-install")
+    .description("Install Auth Monster as an OpenCode plugin")
+    .action(async () => {
+      const configDir = path.join(process.env.HOME || "", ".config", "opencode");
+      const configFile = path.join(configDir, "opencode.json");
+
+      if (!fs.existsSync(configDir)) {
+        fs.mkdirSync(configDir, { recursive: true });
+      }
+
+      let config: any = {};
+      if (fs.existsSync(configFile)) {
+        try {
+          config = JSON.parse(fs.readFileSync(configFile, "utf-8"));
+        } catch (e) {
+          console.error("Error reading opencode.json, creating new one.");
+        }
+      }
+
+      if (!config.plugin) config.plugin = [];
+      if (!config.plugin.includes("opencode-auth-monster")) {
+        config.plugin.push("opencode-auth-monster");
+        console.log("Added opencode-auth-monster to opencode.json plugins.");
+      } else {
+        console.log("opencode-auth-monster already in opencode.json plugins.");
+      }
+
+      fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+      console.log(`OpenCode configuration updated at ${configFile}`);
+    });
+
   program.command('proxy')
     .description('Start a local LLM proxy server')
     .option('-p, --port <number>', 'Port to listen on', '8080')
     .action(async (options) => {
       console.log(`Starting proxy on port ${options.port}...`);
-      // Phase 4 Proxy logic
     });
 
   program.command('fallback')
@@ -159,7 +184,6 @@ async function main() {
 
       const hookPath = path.join(hooksDir, 'prepare-commit-msg');
 
-      // Determine path to the script
       const isTs = __filename.endsWith('.ts');
       let scriptPath;
       let runner;
